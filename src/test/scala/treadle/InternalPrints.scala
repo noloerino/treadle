@@ -36,34 +36,32 @@ class InternalPrints extends FreeSpec with Matchers with LazyLogging
       |    input shouldPrint : UInt<1>
       |    output q : UInt<1>
       |
-      |    reg m : UInt<1>, clk with : (reset => (reset, UInt(0)))
-      |    reg c : UInt<8>, clk with : (reset => (reset, UInt<8>(0)))
+      |    reg m : UInt<1>, clk
+      |    reg c : UInt<8>, clk
       |    q <= mux(sel, m, a)
       |    m <= mux(reset, UInt(0), and(a, q))
-      |    c <= add(c, UInt(1))
+      |    c <= mux(reset, UInt(0), add(c, UInt(1)))
       |    printf(clk, shouldPrint, "c=%d, a=%d, sel=%d, m=%d, q=%d\n", c, a, sel, m, q)
       |
       |""".stripMargin
 
   "internal prints should show up" in {
-    val output = new ByteArrayOutputStream()
     val inputs = List(
       Map("a" -> 1, "sel" -> 1, "shouldPrint" -> 1),
       Map("a" -> 1, "sel" -> 0, "shouldPrint" -> 1),
-      Map("a" -> 1, "sel" -> 1, "shouldPrint" -> 1),
-      Map("a" -> 1, "sel" -> 1, "shouldPrint" -> 1),
-      Map("a" -> 1, "sel" -> 1, "shouldPrint" -> 1),
-      Map("a" -> 0, "sel" -> 1, "shouldPrint" -> 1),
+//      Map("a" -> 1, "sel" -> 1, "shouldPrint" -> 1),
+//      Map("a" -> 1, "sel" -> 1, "shouldPrint" -> 1),
+//      Map("a" -> 1, "sel" -> 1, "shouldPrint" -> 1),
+//      Map("a" -> 0, "sel" -> 1, "shouldPrint" -> 1),
     )
-    Console.withOut(new PrintStream(output)) {
+    Console.withOut(Console.out) {
       val tester = TreadleTester(Seq(FirrtlSourceAnnotation(input), CallResetAtStartupAnnotation, WriteVcdAnnotation))
+      println(s"${Console.RESET}${Console.GREEN}STARTING TEST")
       for (inputMap <- inputs) {
         inputMap foreach {case (wire, value) => tester.poke(wire, value)}
         tester.step()
       }
       tester.finish
     }
-    Logger.setLevel("treadle.InternalPrints", LogLevel.Debug)
-    logger.debug(output.toString)
   }
 }

@@ -61,6 +61,8 @@ class ExecutionEngine(
 
   /* Default dataStore plugins */
 
+  dataStore.addPlugin("show-usage", new ReportUsage(this), enable = true)
+
   dataStore.addPlugin(
     "show-assigns",
     new ReportAssignments(this),

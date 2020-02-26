@@ -53,6 +53,15 @@ abstract class DataStorePlugin {
   def run(symbol: Symbol, offset: Int = -1, previousValue: Big): Unit
 }
 
+class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin {
+  val dataStore: DataStore = executionEngine.dataStore
+
+  def run(symbol: Symbol, offset: Int = -1, previousValue: BigInt): Unit = {
+    println(s"reportusage: $symbol $offset $previousValue")
+    // symbol is the thing being assigned to, offset is memory or something; we can look up its new value
+  }
+}
+
 class ReportAssignments(val executionEngine: ExecutionEngine) extends DataStorePlugin {
   val dataStore: DataStore = executionEngine.dataStore
 
