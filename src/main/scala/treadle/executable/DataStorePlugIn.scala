@@ -57,7 +57,12 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
   val dataStore: DataStore = executionEngine.dataStore
 
   def run(symbol: Symbol, offset: Int = -1, previousValue: BigInt): Unit = {
-    println(s"reportusage: $symbol $offset $previousValue")
+    val children = executionEngine.symbolTable.getChildren(List(symbol))
+    if (!children.isEmpty) {
+//      println(s"reportusage: $symbol $offset $previousValue")
+//      println(s"\tchildren: $children")
+//      println(s"\tparent: ${executionEngine.symbolTable.getParents(List(symbol))}")
+    }
     // symbol is the thing being assigned to, offset is memory or something; we can look up its new value
   }
 }

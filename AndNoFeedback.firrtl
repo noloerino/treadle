@@ -1,0 +1,11 @@
+circuit AndNoFeedback:
+    module AndNoFeedback:
+        input clk : Clock
+        input sel : UInt<1>
+        input a : UInt<1>
+        output q : UInt<1>
+        
+        wire m : UInt<1>
+        m <= UInt(1)
+        q <= mux(sel, m, a)
+        printf(clk, UInt(1), "a=%d, sel=%d, m=%d, q=%d\n", a, sel, m, q)

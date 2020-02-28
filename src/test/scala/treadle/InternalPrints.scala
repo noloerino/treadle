@@ -25,10 +25,25 @@ import org.scalatest.{FreeSpec, Matchers}
 class InternalPrints extends FreeSpec with Matchers with LazyLogging
 {
 
-  private val input =
-    """
+  private val unclockedInput = """
+      |circuit AndNoFeedback:
+      |  module AndNoFeedback:
+      |    input clk : Clock
+      |    input sel : UInt<1>
+      |    input a : UInt<1>
+      |    input shouldPrint : UInt<1>
+      |    output q : UInt<1>
+      |
+      |    wire m : UInt<1>
+      |    m <= UInt(1)
+      |    q <= mux(sel, m, a)
+      |    printf(clk, shouldPrint, "a=%d, sel=%d, m=%d, q=%d\n", a, sel, m, q)
+      |
+      |""".stripMargin
+
+  private val clockedInput = """
       |circuit AndFeedback:
-      |  module AndFeedback :
+      |  module AndFeedback:
       |    input clk : Clock
       |    input reset : UInt<1>
       |    input sel : UInt<1>
@@ -45,6 +60,8 @@ class InternalPrints extends FreeSpec with Matchers with LazyLogging
       |
       |""".stripMargin
 
+  private val input = unclockedInput
+
   "internal prints should show up" in {
     val inputs = List(
       Map("a" -> 1, "sel" -> 1, "shouldPrint" -> 1),
@@ -55,7 +72,12 @@ class InternalPrints extends FreeSpec with Matchers with LazyLogging
 //      Map("a" -> 0, "sel" -> 1, "shouldPrint" -> 1),
     )
     Console.withOut(Console.out) {
-      val tester = TreadleTester(Seq(FirrtlSourceAnnotation(input), CallResetAtStartupAnnotation, WriteVcdAnnotation))
+      val tester = TreadleTester(
+        Seq(FirrtlSourceAnnotation(input),
+          CallResetAtStartupAnnotation,
+          WriteVcdAnnotation,
+          VerboseAnnotation
+        ))
       println(s"${Console.RESET}${Console.GREEN}STARTING TEST")
       for (inputMap <- inputs) {
         inputMap foreach {case (wire, value) => tester.poke(wire, value)}
