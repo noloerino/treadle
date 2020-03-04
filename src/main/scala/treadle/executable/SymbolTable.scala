@@ -26,7 +26,20 @@ import treadle.{ScalaBlackBox, ScalaBlackBoxFactory}
 import scala.collection.immutable.Set
 import scala.collection.mutable
 
+// Encodes information about an operation and its arguments.
+sealed trait OperationInfo
+// Muxes; arguments are ordered
+case class MuxOperation(condition: Symbol, args: List[Symbol]) extends OperationInfo
+// Primitive operations like + - & |, etc.; args are ordered
+case class PrimOperation(opcode: PrimOp, args: List[Symbol]) extends OperationInfo
+// Assignment of a literal value to a wire
+case class LiteralAssignOperation() extends OperationInfo
+// References like slicing or indexing or direct assignment
+case class ReferenceOperation(src: Symbol) extends OperationInfo
+
 class SymbolTable(val nameToSymbol: mutable.HashMap[String, Symbol]) {
+
+  val operationGraph: mutable.HashMap[Symbol, OperationInfo] = new mutable.HashMap
 
   var childrenOf: DiGraph[Symbol] = DiGraph[Symbol](Map.empty[Symbol, Set[Symbol]])
   var parentsOf:  DiGraph[Symbol] = DiGraph[Symbol](Map.empty[Symbol, Set[Symbol]])
@@ -207,6 +220,7 @@ object SymbolTable extends LazyLogging {
 
     val sensitivityGraphBuilder: SensitivityGraphBuilder = new SensitivityGraphBuilder
 
+    val operationGraph = new mutable.HashMap[Symbol, OperationInfo]
     val instanceNames = new mutable.HashSet[String]
     val registerNames = new mutable.HashSet[String]
     val inputPorts = new mutable.HashSet[String]
@@ -246,6 +260,7 @@ object SymbolTable extends LazyLogging {
       def expressionToReferences(expression: Expression): SymbolSet = {
         val result = expression match {
           case Mux(condition, trueExpression, falseExpression, _) =>
+            // For now assume in single assignment form
             expressionToReferences(condition) ++
               expressionToReferences(trueExpression) ++
               expressionToReferences(falseExpression)
@@ -264,6 +279,42 @@ object SymbolTable extends LazyLogging {
             throw new Exception(s"expressionToReferences:error: unhandled expression $expression")
         }
         result
+      }
+
+      // Like expressionToReferences, but returns info about the op
+      def expressionToOpType(expression: Expression): OperationInfo = {
+        expression match {
+          case Mux(condition, trueExpression, falseExpression, _) =>
+            val conditionRefs = expressionToReferences(condition)
+            val trueRefs = expressionToReferences(trueExpression)
+            val falseRefs = expressionToReferences(falseExpression)
+            if (!(conditionRefs.size == 1 && trueRefs.size == 1 && falseRefs.size == 1)) {
+              throw new Exception(s"expressionToOpType: Usage graph cannot handle mux with more than one symbol in some argument: $expression")
+            }
+            MuxOperation(conditionRefs.head, List(trueRefs.head, falseRefs.head))
+          case _: WRef | _: WSubField | _: WSubIndex =>
+            // For direct assignments/indices, consider it a direct dependency
+            ReferenceOperation(nameToSymbol(expand(expression.serialize)))
+          case DoPrim(op, args, _, _) =>
+            val argRefs = args.flatMap {
+              case (expr) => {
+                val exprRefs = expressionToReferences(expr)
+                if (exprRefs.size > 1) { // < 1 occurs when adding a literal as an argument
+                  throw new Exception(s"expressionToOpType: Usage graph cannot handle primitive op with more than one symbol argument: $expr")
+                }
+                exprRefs.headOption
+              }
+            }
+            PrimOperation(op, argRefs.toList)
+          case _: UIntLiteral | _: SIntLiteral =>
+            LiteralAssignOperation()
+          case _ =>
+            throw new Exception(s"expressionToOpType: Usage graph cannot handle expression: $expression")
+         }
+      }
+
+      def addOperationDependency(sensitiveSymbol: Symbol, expr: Expression): Unit = {
+        operationGraph.put(sensitiveSymbol, expressionToOpType(expr))
       }
 
       def getClockSymbol(expression: Expression): Option[Symbol] = {
@@ -308,6 +359,7 @@ object SymbolTable extends LazyLogging {
 
               val references = expressionToReferences(con.expr)
               addDependency(symbol, references)
+              addOperationDependency(symbol, con.expr)
 
             case _ =>
               println(s"Warning: connect at ${con.info}, ${con.loc} is not WRef, WSubField or WSubIndex")
@@ -370,6 +422,7 @@ object SymbolTable extends LazyLogging {
           val symbol = Symbol(expandedName, expression.tpe, firrtl.NodeKind, info = info)
           addSymbol(symbol)
           addDependency(symbol, expressionToReferences(expression))
+          addOperationDependency(symbol, expression)
           if (expression.tpe == ClockType) {
             createPrevClock(symbol.name, expression.tpe, info)
           }
@@ -574,6 +627,22 @@ object SymbolTable extends LazyLogging {
     // scalastyle:on cyclomatic.complexity
 
     val symbolTable = SymbolTable(nameToSymbol)
+    symbolTable.operationGraph ++= operationGraph
+    println("===Begin operation graph===")
+    for ((symbol, opInfo) <- symbolTable.operationGraph) {
+      print(s"\t${symbol.name}")
+      opInfo match {
+        case MuxOperation(condition, args) =>
+          println(s" <- mux(${condition.name}, ${(args map(_.name)).mkString(", ")})")
+        case PrimOperation(opcode, args) =>
+          println(s" <- ${opcode.serialize}(${(args map(_.name)).mkString(", ")})")
+        case LiteralAssignOperation() =>
+          println(s" <- [literal]")
+        case ReferenceOperation(src) =>
+          println(s" <- ${src.name}")
+      }
+    }
+    println("===End operation graph===")
     symbolTable.instanceNames ++= instanceNames
     symbolTable.instanceNameToModuleName ++= instanceNameToModuleName
     symbolTable.registerNames ++= registerNames

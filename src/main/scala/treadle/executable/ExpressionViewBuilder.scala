@@ -89,11 +89,6 @@ class ExpressionViewBuilder(
         val (arg1, arg1IsSigned, arg1Width) = getParameters(args.head)
         val (arg2, arg2IsSigned, arg2Width) = getParameters(args.tail.head)
 
-        Console.println(s"IN BIN OP $opCode")
-        for (arg <- args) {
-          Console.println(s"\t $arg")
-        }
-
         expression"$opCode($arg1, $arg2)"
       }
 

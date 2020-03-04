@@ -50,17 +50,18 @@ class InternalPrints extends FreeSpec with Matchers with LazyLogging
       |    input a : UInt<1>
       |    input shouldPrint : UInt<1>
       |    output q : UInt<1>
+      |    output c_out : UInt<8>
       |
       |    reg m : UInt<1>, clk
       |    reg c : UInt<8>, clk
       |    q <= mux(sel, m, a)
-      |    m <= mux(reset, UInt(0), and(a, q))
-      |    c <= mux(reset, UInt(0), add(c, UInt(1)))
-      |    printf(clk, shouldPrint, "c=%d, a=%d, sel=%d, m=%d, q=%d\n", c, a, sel, m, q)
+      |    m <= and(a, q)
+      |    c <= add(c, UInt(1))
+      |    c_out <= c
       |
       |""".stripMargin
 
-  private val input = unclockedInput
+  private val input = clockedInput
 
   "internal prints should show up" in {
     val inputs = List(
@@ -76,7 +77,7 @@ class InternalPrints extends FreeSpec with Matchers with LazyLogging
         Seq(FirrtlSourceAnnotation(input),
           CallResetAtStartupAnnotation,
           WriteVcdAnnotation,
-          VerboseAnnotation
+//          VerboseAnnotation
         ))
       println(s"${Console.RESET}${Console.GREEN}STARTING TEST")
       for (inputMap <- inputs) {
