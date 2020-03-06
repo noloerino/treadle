@@ -28,6 +28,8 @@ import treadle.executable._
 import treadle.stage.{TreadleCompatibilityPhase, TreadleTesterPhase}
 import treadle.vcd.VCD
 
+import scala.collection.mutable
+
 //TODO: Indirect assignments to external modules input is possibly not handled correctly
 //TODO: Force values should work with multi-slot symbols
 
@@ -444,6 +446,27 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
   def report(): Unit = {
     engine.writeVCD()
     println(reportString)
+  }
+
+  // Traverse the usage graph
+  def finishAndFindDependentsOf(symbolName: String, cycle: Int): Boolean = {
+    val graph = engine.usageReporter.concreteUsageGraph
+    // Perform mark and sweep
+    def getParents(symbol: Symbol, cycle: Int) = graph(cycle).getOrElse(symbol, mutable.Set())
+    val rootSet: mutable.Set[(Symbol, Int)] = getParents(engine.symbolTable.get(symbolName).get, cycle)
+    val stack: mutable.ArrayStack[(Symbol, Int)] = mutable.ArrayStack()
+    val marked: mutable.Set[(Symbol, Int)] = mutable.Set()
+    rootSet foreach { x => stack push x }
+    while (stack.nonEmpty) {
+      val (symbol, cycle) = stack.pop()
+      // Mark and add parents to stack
+      marked add ((symbol, cycle))
+      getParents(symbol, cycle) foreach { case x if !marked.contains(x) => stack push x }
+    }
+
+    println(s"*** At finish, examined symbol $symbolName @ $cycle; found dependencies on:")
+    marked foreach { case (symbol: Symbol, cycle: Int) => println(s"\t${symbol.name} @ $cycle")}
+    finish
   }
 
   def finish: Boolean = {

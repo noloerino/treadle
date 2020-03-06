@@ -18,7 +18,7 @@ package treadle.executable
 
 import firrtl.annotations.NoTargetAnnotation
 import firrtl.options.Unserializable
-import firrtl.PrimOps.{And, Or, Xor}
+import firrtl.PrimOps.{And, Or}
 import firrtl.ir.PrimOp
 import treadle.vcd.VCD
 
@@ -56,11 +56,36 @@ abstract class DataStorePlugin {
 }
 
 class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin {
+
   val dataStore: DataStore = executionEngine.dataStore
   val opGraph = executionEngine.symbolTable.operationGraph
 
-  def getSymbolVal(symbol: Symbol): BigInt = {
+  // Needed to initialize cycle 0; if None then we haven't encountered a symbol yet
+  private var firstSymbol: Option[Symbol] = None
+  private type Cycle = Int
+  private type CycleUsageGraph = mutable.HashMap[Symbol, mutable.Set[(Symbol, Cycle)]]
+  // Maps cycle to mapping of symbol to parents
+  val concreteUsageGraph: mutable.HashMap[Cycle, CycleUsageGraph] = mutable.HashMap()
+  private var currentCycle: Cycle = 0
+  private def currentMap: Option[CycleUsageGraph] = concreteUsageGraph.get(currentCycle)
+
+  private def getSymbolVal(symbol: Symbol): BigInt = {
     symbol.normalize(dataStore(symbol))
+  }
+
+  private def checkUpdateCycleMap(symbol: Symbol): Unit = {
+    firstSymbol match {
+      // If the first symbol came back around, then init a new map for it
+      case Some(otherSym) if otherSym.equals(symbol) =>
+        currentCycle += 1
+        concreteUsageGraph.put(currentCycle, mutable.HashMap())
+      case Some(_) => // pass
+      // If we haven't yet seen a first symbol, initialize it
+      case None =>
+        assert(currentCycle == 0, s"firstSymbol was None on cycle ${currentCycle}")
+        firstSymbol = Some(symbol)
+        concreteUsageGraph.put(currentCycle, mutable.HashMap())
+    }
   }
 
   // scalastyle:off cyclomatic.complexity
@@ -68,21 +93,19 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
     if (offset != -1) {
       return
     }
-    def reportAllAsUsed(opcode: PrimOp, args: List[Symbol]): Unit = {
-      println(s"\tall args for operation ${opcode.serialize.toUpperCase} considered used:")
-      args map { s => println(s"\t${s.name} = ${getSymbolVal(s)}") }
-    }
+    checkUpdateCycleMap(symbol)
+    val symbolParents = mutable.Set[Symbol]()
+    def reportAllAsUsed(opcode: PrimOp, args: List[Symbol]): Unit = args map { symbolParents add _ }
     val symbolVal = getSymbolVal(symbol)
-    println(s"reportUsage: symbol ${symbol.name} had value ${symbolVal}; printing used wires")
     opGraph.get(symbol) match {
       case Some(opInfo) =>
         opInfo match {
           case MuxOperation(condition, args) =>
             val conditionVal = getSymbolVal(condition)
-            println(s"\tmux select ${condition.name} had value ${conditionVal}")
+            symbolParents add condition
             // Mux has 0 value as last argument; downcast because let's face it it's not going to be that big
             val usedArg = args.reverse(conditionVal.intValue())
-            println(s"\tselected arg ${usedArg.name}")
+            symbolParents add usedArg
             assert(getSymbolVal(usedArg) == symbolVal, "Selected mux argument and output must have same value")
           case PrimOperation(opcode, args) =>
             opcode match {
@@ -91,8 +114,8 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
                 val inputA = args.head
                 val inputB = args.last
                 (getSymbolVal(inputA).toInt, getSymbolVal(inputB).toInt) match {
-                  case (0, 1) => println(s"\tAND chose input ${inputA.name} with value 0")
-                  case (1, 0) => println(s"\tAND chose input ${inputB.name} with value 0")
+                  case (0, 1) => symbolParents add inputA
+                  case (1, 0) => symbolParents add inputB
                   case (0, 0) | (1, 1) | _ => reportAllAsUsed(opcode, args) // non-1b case
                 }
               case Or =>
@@ -100,17 +123,22 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
                 val inputA = args.head
                 val inputB = args.last
                 (getSymbolVal(inputA).toInt, getSymbolVal(inputB).toInt) match {
-                  case (0, 1) => println(s"\tOR chose input ${inputB.name} with value 1")
-                  case (1, 0) => println(s"\tOR chose input ${inputA.name} with value 1")
+                  case (1, 0) => symbolParents add inputA
+                  case (0, 1) => symbolParents add inputB
                   case (0, 0) | (1, 1) | _ => reportAllAsUsed(opcode, args) // non-1b case
                 }
               case _ => reportAllAsUsed(opcode, args)
             }
           case LiteralAssignOperation() =>
-          case ReferenceOperation(src) =>
+          case ReferenceOperation(src) => symbolParents add src
         }
       case _ => println(s"\tno dependency info for symbol ${symbol.name}")
     }
+
+    val parentString = (symbolParents map { _.name }).mkString(",")
+    // TODO express relationship between m and m/in of previous cycle
+    println(s"symbol ${symbol.name} @ $currentCycle = ${symbolVal}; depended on {$parentString}")
+    currentMap map { _.put(symbol, symbolParents map { (_, -1 + currentCycle) }) }
   }
 }
 

@@ -61,7 +61,8 @@ class ExecutionEngine(
 
   /* Default dataStore plugins */
 
-  dataStore.addPlugin("show-usage", new ReportUsage(this), enable = true)
+  val usageReporter = new ReportUsage(this)
+  dataStore.addPlugin("show-usage", usageReporter, enable = true)
 
   dataStore.addPlugin(
     "show-assigns",

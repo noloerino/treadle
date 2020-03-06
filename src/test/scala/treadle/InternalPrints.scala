@@ -84,7 +84,8 @@ class InternalPrints extends FreeSpec with Matchers with LazyLogging
         inputMap foreach {case (wire, value) => tester.poke(wire, value)}
         tester.step()
       }
-      tester.finish
+      // For some reason, it simulates for 3 cycles first
+      tester.finishAndFindDependentsOf("m/in", 5)
     }
   }
 }
