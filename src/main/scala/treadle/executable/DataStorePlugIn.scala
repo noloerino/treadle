@@ -52,7 +52,7 @@ abstract class DataStorePlugin {
   def run(symbol: Symbol, offset: Int = -1, previousValue: Big): Unit
 }
 
-class ReportUsage(val executionEngine: ExecutionEngine, val clockStepper: ClockStepper) extends DataStorePlugin {
+class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin {
 
   val dataStore: DataStore = executionEngine.dataStore
   val symbolTable: SymbolTable = executionEngine.symbolTable
@@ -63,20 +63,17 @@ class ReportUsage(val executionEngine: ExecutionEngine, val clockStepper: ClockS
   private type CycleUsageGraph = mutable.HashMap[Symbol, mutable.Set[(Symbol, Cycle)]]
   // Maps cycle to mapping of symbol to parents
   val concreteUsageGraph: mutable.HashMap[Cycle, CycleUsageGraph] = mutable.HashMap()
-  private var currentCycle: Cycle = 0
-  private def currentMap: Option[CycleUsageGraph] = concreteUsageGraph.get(currentCycle)
 
-  private def getSymbolVal(symbol: Symbol): BigInt = {
-    symbol.normalize(dataStore(symbol))
+  private var currentCycle: Cycle = 0
+  private def currentMap: CycleUsageGraph = concreteUsageGraph.get(currentCycle).get
+
+  private def getSymbolVal(symbol: Symbol): Int = {
+    dataStore(symbol).intValue()
   }
 
   def updateCycleMap(): Unit = {
     // Called by tester when cycle is stepped
-    currentMap match {
-      case None => assert(currentCycle == 0, s"currentMap was None on cycle $currentCycle")
-      case _ => currentCycle += 1
-    }
-    assert(currentCycle == clockStepper.cycleCount, "currentCycle did not match stepper cycle")
+    currentCycle += 1
     concreteUsageGraph.put(currentCycle, mutable.HashMap())
   }
 
@@ -90,12 +87,12 @@ class ReportUsage(val executionEngine: ExecutionEngine, val clockStepper: ClockS
     if (currentCycle > 0 && symbolTable.contains(s"${symbol.name}/in")) {
 //      println(s"register ${symbol.name} @ $currentCycle depended on input from previous cycle")
       // TODO more idiomatic way to get parent of register?
-      currentMap.get.put(symbol, mutable.Set((symbolTable.get(s"${symbol.name}/in").get, currentCycle - 1)))
+      currentMap.put(symbol, mutable.Set((symbolTable.get(s"${symbol.name}/in").get, currentCycle - 1)))
       return
     }
     // Check for other stmts
     val symbolParents = mutable.Set[(Symbol, Cycle)]()
-    def reportAllAsUsed(opcode: PrimOp, args: List[Symbol]): Unit = args map { symbolParents add (_, currentCycle) }
+    def reportAllAsUsed(opcode: PrimOp, args: List[Symbol]): Unit = args foreach { symbolParents add (_, currentCycle) }
     val symbolVal = getSymbolVal(symbol)
     opGraph.get(symbol) match {
       case Some(opInfo) =>
@@ -108,7 +105,7 @@ class ReportUsage(val executionEngine: ExecutionEngine, val clockStepper: ClockS
 //              symbolParents add condition
 //            }
             // Mux has 0 value as last argument; downcast because let's face it it's not going to be that big
-            val usedArg = args.reverse(conditionVal.intValue())
+            val usedArg = args.reverse(conditionVal)
             symbolParents add (usedArg, currentCycle)
             assert(getSymbolVal(usedArg) == symbolVal, "Selected mux argument and output must have same value")
           case PrimOperation(opcode, args) =>
@@ -141,6 +138,7 @@ class ReportUsage(val executionEngine: ExecutionEngine, val clockStepper: ClockS
 
 //    val parentString = (symbolParents map { _.name }).mkString(",")
 //    println(s"symbol ${symbol.name} @ $currentCycle = $symbolVal; depended on {$parentString}")
+    currentMap.put(symbol, symbolParents)
   }
 }
 
