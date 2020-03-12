@@ -56,16 +56,16 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
 
   val dataStore: DataStore = executionEngine.dataStore
   val symbolTable: SymbolTable = executionEngine.symbolTable
-  val opGraph: mutable.HashMap[Symbol, OperationInfo] = symbolTable.operationGraph
+  val opGraph: mutable.Map[Symbol, OperationInfo] = symbolTable.operationGraph
 
   // Needed to initialize cycle 0; if None then we haven't encountered a symbol yet
   private type Cycle = Int
-  private type CycleUsageGraph = mutable.HashMap[Symbol, mutable.Set[(Symbol, Cycle)]]
+  private type CycleUsageGraph = mutable.Map[Symbol, mutable.Set[(Symbol, Cycle)]]
   // Maps cycle to mapping of symbol to parents
-  val concreteUsageGraph: mutable.HashMap[Cycle, CycleUsageGraph] = mutable.HashMap()
+  val concreteUsageGraph: mutable.Map[Cycle, CycleUsageGraph] = mutable.HashMap()
 
   private var currentCycle: Cycle = 0
-  private def currentMap: CycleUsageGraph = concreteUsageGraph.get(currentCycle).get
+  private var currentMap: CycleUsageGraph = mutable.HashMap()
 
   private def getSymbolVal(symbol: Symbol): Int = {
     dataStore(symbol).intValue()
@@ -73,8 +73,9 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
 
   def updateCycleMap(): Unit = {
     // Called by tester when cycle is stepped
+    concreteUsageGraph.put(currentCycle, currentMap)
     currentCycle += 1
-    concreteUsageGraph.put(currentCycle, mutable.HashMap())
+    currentMap = mutable.HashMap()
   }
 
   // scalastyle:off cyclomatic.complexity method.length
@@ -102,7 +103,7 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
 //            val firstArgVal = getSymbolVal(args.head)
             // If all values are equal, condition is unused
 //            if (!args.foldRight(true)((arg, acc) => (getSymbolVal(arg) == firstArgVal) && acc)) {
-//              symbolParents add condition
+            symbolParents add (condition, currentCycle)
 //            }
             // Mux has 0 value as last argument; downcast because let's face it it's not going to be that big
             val usedArg = args.reverse(conditionVal)
@@ -114,7 +115,7 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
                 assert(args.size == 2)
                 val inputA = args.head
                 val inputB = args.last
-                (getSymbolVal(inputA).toInt, getSymbolVal(inputB).toInt) match {
+                (getSymbolVal(inputA), getSymbolVal(inputB)) match {
                   case (0, 1) => symbolParents add (inputA, currentCycle)
                   case (1, 0) => symbolParents add (inputB, currentCycle)
                   case (0, 0) | (1, 1) | _ => reportAllAsUsed(opcode, args) // non-1b case
@@ -123,7 +124,7 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
                 assert(args.size == 2)
                 val inputA = args.head
                 val inputB = args.last
-                (getSymbolVal(inputA).toInt, getSymbolVal(inputB).toInt) match {
+                (getSymbolVal(inputA), getSymbolVal(inputB)) match {
                   case (1, 0) => symbolParents add (inputA, currentCycle)
                   case (0, 1) => symbolParents add (inputB, currentCycle)
                   case (0, 0) | (1, 1) | _ => reportAllAsUsed(opcode, args) // non-1b case
