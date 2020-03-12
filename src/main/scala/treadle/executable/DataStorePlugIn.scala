@@ -90,12 +90,12 @@ class ReportUsage(val executionEngine: ExecutionEngine, val clockStepper: ClockS
     if (currentCycle > 0 && symbolTable.contains(s"${symbol.name}/in")) {
 //      println(s"register ${symbol.name} @ $currentCycle depended on input from previous cycle")
       // TODO more idiomatic way to get parent of register?
-      currentMap map { _.put(symbol, mutable.Set((symbolTable.get(s"${symbol.name}/in").get, currentCycle - 1)))}
+      currentMap.get.put(symbol, mutable.Set((symbolTable.get(s"${symbol.name}/in").get, currentCycle - 1)))
       return
     }
     // Check for other stmts
-    val symbolParents = mutable.Set[Symbol]()
-    def reportAllAsUsed(opcode: PrimOp, args: List[Symbol]): Unit = args map { symbolParents add }
+    val symbolParents = mutable.Set[(Symbol, Cycle)]()
+    def reportAllAsUsed(opcode: PrimOp, args: List[Symbol]): Unit = args map { symbolParents add (_, currentCycle) }
     val symbolVal = getSymbolVal(symbol)
     opGraph.get(symbol) match {
       case Some(opInfo) =>
@@ -109,7 +109,7 @@ class ReportUsage(val executionEngine: ExecutionEngine, val clockStepper: ClockS
 //            }
             // Mux has 0 value as last argument; downcast because let's face it it's not going to be that big
             val usedArg = args.reverse(conditionVal.intValue())
-            symbolParents add usedArg
+            symbolParents add (usedArg, currentCycle)
             assert(getSymbolVal(usedArg) == symbolVal, "Selected mux argument and output must have same value")
           case PrimOperation(opcode, args) =>
             opcode match {
@@ -118,8 +118,8 @@ class ReportUsage(val executionEngine: ExecutionEngine, val clockStepper: ClockS
                 val inputA = args.head
                 val inputB = args.last
                 (getSymbolVal(inputA).toInt, getSymbolVal(inputB).toInt) match {
-                  case (0, 1) => symbolParents add inputA
-                  case (1, 0) => symbolParents add inputB
+                  case (0, 1) => symbolParents add (inputA, currentCycle)
+                  case (1, 0) => symbolParents add (inputB, currentCycle)
                   case (0, 0) | (1, 1) | _ => reportAllAsUsed(opcode, args) // non-1b case
                 }
               case Or =>
@@ -127,21 +127,20 @@ class ReportUsage(val executionEngine: ExecutionEngine, val clockStepper: ClockS
                 val inputA = args.head
                 val inputB = args.last
                 (getSymbolVal(inputA).toInt, getSymbolVal(inputB).toInt) match {
-                  case (1, 0) => symbolParents add inputA
-                  case (0, 1) => symbolParents add inputB
+                  case (1, 0) => symbolParents add (inputA, currentCycle)
+                  case (0, 1) => symbolParents add (inputB, currentCycle)
                   case (0, 0) | (1, 1) | _ => reportAllAsUsed(opcode, args) // non-1b case
                 }
               case _ => reportAllAsUsed(opcode, args)
             }
           case LiteralAssignOperation() =>
-          case ReferenceOperation(src) => symbolParents add src
+          case ReferenceOperation(src) => symbolParents add (src, currentCycle)
         }
       case _ =>
     }
 
-    val parentString = (symbolParents map { _.name }).mkString(",")
+//    val parentString = (symbolParents map { _.name }).mkString(",")
 //    println(s"symbol ${symbol.name} @ $currentCycle = $symbolVal; depended on {$parentString}")
-    currentMap map { _.put(symbol, symbolParents map { (_, currentCycle) }) }
   }
 }
 
