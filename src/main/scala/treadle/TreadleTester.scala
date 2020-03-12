@@ -457,8 +457,9 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
   def finishAndFindDependentsOf(symbolName: String, cycle: Int): Boolean = {
     val graph = usageReporter.concreteUsageGraph
     // Perform mark and sweep
-    def getParents(symbol: Symbol, cycle: Int) = graph(cycle).getOrElse(symbol, mutable.Set())
-    val rootSet: mutable.Set[(Symbol, Int)] = getParents(engine.symbolTable.get(symbolName).get, cycle)
+    def getParents(symbol: Symbol, cycle: Int) = graph(cycle).getOrElse(symbol, mutable.Map())
+    val rootSet: mutable.Set[(Symbol, Int)] = mutable.Set()
+    getParents(engine.symbolTable.get(symbolName).get, cycle) foreach { case (s, c) => rootSet add ((s, c)) }
     val stack: mutable.ArrayStack[(Symbol, Int)] = mutable.ArrayStack()
     val marked: mutable.Set[(Symbol, Int)] = mutable.Set()
     rootSet foreach { x => stack push x }
@@ -466,7 +467,10 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
       val (symbol, cycle) = stack.pop()
       // Mark and add parents to stack
       marked add ((symbol, cycle))
-      getParents(symbol, cycle) foreach { case x if !marked.contains(x) => stack push x }
+      getParents(symbol, cycle) foreach {
+        case (s, c) if !marked.contains((s, c)) => stack push ((s, c))
+        case _ =>
+      }
     }
 
     println(s"*** At finish, examined symbol $symbolName @ $cycle; found dependencies on:")
