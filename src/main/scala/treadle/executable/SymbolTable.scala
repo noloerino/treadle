@@ -628,6 +628,7 @@ object SymbolTable extends LazyLogging {
 
     val symbolTable = SymbolTable(nameToSymbol)
     symbolTable.operationGraph ++= operationGraph
+    /*
     println("===Begin operation graph===")
     for ((symbol, opInfo) <- symbolTable.operationGraph) {
       print(s"\t${symbol.name}")
@@ -643,6 +644,7 @@ object SymbolTable extends LazyLogging {
       }
     }
     println("===End operation graph===")
+    */
     symbolTable.instanceNames ++= instanceNames
     symbolTable.instanceNameToModuleName ++= instanceNameToModuleName
     symbolTable.registerNames ++= registerNames

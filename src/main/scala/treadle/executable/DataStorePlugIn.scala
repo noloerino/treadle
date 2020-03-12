@@ -16,11 +16,8 @@ limitations under the License.
 
 package treadle.executable
 
-import firrtl.annotations.NoTargetAnnotation
-import firrtl.options.Unserializable
 import firrtl.PrimOps.{And, Or}
 import firrtl.ir.PrimOp
-import treadle.vcd.VCD
 
 import scala.collection.mutable
 
@@ -55,13 +52,13 @@ abstract class DataStorePlugin {
   def run(symbol: Symbol, offset: Int = -1, previousValue: Big): Unit
 }
 
-class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin {
+class ReportUsage(val executionEngine: ExecutionEngine, val clockStepper: ClockStepper) extends DataStorePlugin {
 
   val dataStore: DataStore = executionEngine.dataStore
-  val opGraph = executionEngine.symbolTable.operationGraph
+  val symbolTable: SymbolTable = executionEngine.symbolTable
+  val opGraph: mutable.HashMap[Symbol, OperationInfo] = symbolTable.operationGraph
 
   // Needed to initialize cycle 0; if None then we haven't encountered a symbol yet
-  private var firstSymbol: Option[Symbol] = None
   private type Cycle = Int
   private type CycleUsageGraph = mutable.HashMap[Symbol, mutable.Set[(Symbol, Cycle)]]
   // Maps cycle to mapping of symbol to parents
@@ -73,36 +70,43 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
     symbol.normalize(dataStore(symbol))
   }
 
-  private def checkUpdateCycleMap(symbol: Symbol): Unit = {
-    firstSymbol match {
-      // If the first symbol came back around, then init a new map for it
-      case Some(otherSym) if otherSym.equals(symbol) =>
-        currentCycle += 1
-        concreteUsageGraph.put(currentCycle, mutable.HashMap())
-      case Some(_) => // pass
-      // If we haven't yet seen a first symbol, initialize it
-      case None =>
-        assert(currentCycle == 0, s"firstSymbol was None on cycle ${currentCycle}")
-        firstSymbol = Some(symbol)
-        concreteUsageGraph.put(currentCycle, mutable.HashMap())
+  def updateCycleMap(): Unit = {
+    // Called by tester when cycle is stepped
+    currentMap match {
+      case None => assert(currentCycle == 0, s"currentMap was None on cycle $currentCycle")
+      case _ => currentCycle += 1
     }
+    assert(currentCycle == clockStepper.cycleCount, "currentCycle did not match stepper cycle")
+    concreteUsageGraph.put(currentCycle, mutable.HashMap())
   }
 
-  // scalastyle:off cyclomatic.complexity
+  // scalastyle:off cyclomatic.complexity method.length
   def run(symbol: Symbol, offset: Int = -1, previousValue: BigInt): Unit = {
+    // TODO problem: clock is never here
     if (offset != -1) {
       return
     }
-    checkUpdateCycleMap(symbol)
+    // Check for registers, which depend exclusively on the previous cycle
+    if (currentCycle > 0 && symbolTable.contains(s"${symbol.name}/in")) {
+//      println(s"register ${symbol.name} @ $currentCycle depended on input from previous cycle")
+      // TODO more idiomatic way to get parent of register?
+      currentMap map { _.put(symbol, mutable.Set((symbolTable.get(s"${symbol.name}/in").get, currentCycle - 1)))}
+      return
+    }
+    // Check for other stmts
     val symbolParents = mutable.Set[Symbol]()
-    def reportAllAsUsed(opcode: PrimOp, args: List[Symbol]): Unit = args map { symbolParents add _ }
+    def reportAllAsUsed(opcode: PrimOp, args: List[Symbol]): Unit = args map { symbolParents add }
     val symbolVal = getSymbolVal(symbol)
     opGraph.get(symbol) match {
       case Some(opInfo) =>
         opInfo match {
           case MuxOperation(condition, args) =>
             val conditionVal = getSymbolVal(condition)
-            symbolParents add condition
+//            val firstArgVal = getSymbolVal(args.head)
+            // If all values are equal, condition is unused
+//            if (!args.foldRight(true)((arg, acc) => (getSymbolVal(arg) == firstArgVal) && acc)) {
+//              symbolParents add condition
+//            }
             // Mux has 0 value as last argument; downcast because let's face it it's not going to be that big
             val usedArg = args.reverse(conditionVal.intValue())
             symbolParents add usedArg
@@ -132,13 +136,12 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
           case LiteralAssignOperation() =>
           case ReferenceOperation(src) => symbolParents add src
         }
-      case _ => println(s"\tno dependency info for symbol ${symbol.name}")
+      case _ =>
     }
 
     val parentString = (symbolParents map { _.name }).mkString(",")
-    // TODO express relationship between m and m/in of previous cycle
-    println(s"symbol ${symbol.name} @ $currentCycle = ${symbolVal}; depended on {$parentString}")
-    currentMap map { _.put(symbol, symbolParents map { (_, -1 + currentCycle) }) }
+//    println(s"symbol ${symbol.name} @ $currentCycle = $symbolVal; depended on {$parentString}")
+    currentMap map { _.put(symbol, symbolParents map { (_, currentCycle) }) }
   }
 }
 

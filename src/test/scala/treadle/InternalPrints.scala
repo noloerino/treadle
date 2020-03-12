@@ -18,7 +18,8 @@ package treadle
 
 import java.io.{ByteArrayOutputStream, PrintStream}
 
-import firrtl.stage.FirrtlSourceAnnotation
+import firrtl.options.TargetDirAnnotation
+import firrtl.stage.{FirrtlSourceAnnotation, OutputFileAnnotation}
 import logger.{LazyLogging, LogLevel, Logger}
 import org.scalatest.{FreeSpec, Matchers}
 
@@ -45,19 +46,13 @@ class InternalPrints extends FreeSpec with Matchers with LazyLogging
       |circuit AndFeedback:
       |  module AndFeedback:
       |    input clk : Clock
-      |    input reset : UInt<1>
       |    input sel : UInt<1>
       |    input a : UInt<1>
-      |    input shouldPrint : UInt<1>
       |    output q : UInt<1>
-      |    output c_out : UInt<8>
       |
       |    reg m : UInt<1>, clk
-      |    reg c : UInt<8>, clk
       |    q <= mux(sel, m, a)
       |    m <= and(a, q)
-      |    c <= add(c, UInt(1))
-      |    c_out <= c
       |
       |""".stripMargin
 
@@ -65,18 +60,20 @@ class InternalPrints extends FreeSpec with Matchers with LazyLogging
 
   "internal prints should show up" in {
     val inputs = List(
-      Map("a" -> 1, "sel" -> 1, "shouldPrint" -> 1),
-      Map("a" -> 1, "sel" -> 0, "shouldPrint" -> 1),
-//      Map("a" -> 1, "sel" -> 1, "shouldPrint" -> 1),
-//      Map("a" -> 1, "sel" -> 1, "shouldPrint" -> 1),
-//      Map("a" -> 1, "sel" -> 1, "shouldPrint" -> 1),
-//      Map("a" -> 0, "sel" -> 1, "shouldPrint" -> 1),
+      Map("a" -> 1, "sel" -> 1),
+      Map("a" -> 1, "sel" -> 0),
+      Map("a" -> 1, "sel" -> 1),
+      Map("a" -> 1, "sel" -> 1),
+      Map("a" -> 1, "sel" -> 1),
+      Map("a" -> 0, "sel" -> 1),
     )
     Console.withOut(Console.out) {
       val tester = TreadleTester(
         Seq(FirrtlSourceAnnotation(input),
-          CallResetAtStartupAnnotation,
+//          CallResetAtStartupAnnotation,
           WriteVcdAnnotation,
+          TargetDirAnnotation("usage_vcds"),
+          OutputFileAnnotation("internal_prints.vcd")
 //          VerboseAnnotation
         ))
       println(s"${Console.RESET}${Console.GREEN}STARTING TEST")
@@ -84,8 +81,7 @@ class InternalPrints extends FreeSpec with Matchers with LazyLogging
         inputMap foreach {case (wire, value) => tester.poke(wire, value)}
         tester.step()
       }
-      // For some reason, it simulates for 3 cycles first
-      tester.finishAndFindDependentsOf("m/in", 5)
+      tester.finishAndFindDependentsOf("q", 5)
     }
   }
 }
