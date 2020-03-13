@@ -31,6 +31,8 @@ case class Symbol(
   firrtlType: firrtl.ir.Type,
   info:       Info
 ) {
+  val uniqueId = Symbol.genUId
+
   var index:          Int = -1
   var cardinalNumber: Int = -1
 
@@ -96,9 +98,22 @@ case class Symbol(
     f"$name%-40.40s $dataSize%3.3s $dataType%4.4s $bitWidth%6d " +
       f"$slots%6d $index%6d$dataSizeCode $cardinalNumber%6d $info"
   }
+
+  override def hashCode(): Int = uniqueId
+  override def equals(other: Any): Boolean = other match {
+    case other: Symbol => uniqueId == other.uniqueId
+    case _ => false
+  }
 }
 
 object Symbol {
+  private var counter: Int = 0
+
+  def genUId(): Int = {
+    counter += 1
+    counter
+  }
+
   def apply(name:       String,
             firrtlType: firrtl.ir.Type,
             firrtlKind: Kind = WireKind,
