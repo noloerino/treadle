@@ -65,6 +65,12 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
   private val srcBuffer = mutable.ArrayBuffer[Int]()
   private val srcCycleBuffer = mutable.ArrayBuffer[Int]()
 
+  // Usually, it is reasonable to assume that more wires are used than not; this checks that
+  var usedCount = 0
+  var totalWireCount = 0
+
+  def usedFraction: Double = if (totalWireCount > 0) usedCount.toDouble / totalWireCount.toDouble else 0.0
+
   // Maps cycle to mapping of symbol to parents
 
   private var currentCycle: Cycle = 0
@@ -79,6 +85,7 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
   }
 
   private def addDependency(sink: Symbol, src: Symbol, srcCycle: Int): Unit = {
+    usedCount += 1
     sinkCycleBuffer += currentCycle
     sinkBuffer += sink.uniqueId
     srcBuffer += src.uniqueId
@@ -95,6 +102,7 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
     if (currentCycle > 0 && symbolTable.contains(s"${symbol.name}/in")) {
 //      println(s"register ${symbol.name} @ $currentCycle depended on input from previous cycle")
       // TODO more idiomatic way to get parent of register?
+      totalWireCount += 1
       addDependency(symbol, symbolTable(s"${symbol.name}/in"), currentCycle - 1)
       return
     }
@@ -105,6 +113,7 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
       case Some(opInfo) =>
         opInfo match {
           case MuxOperation(condition, args) =>
+            totalWireCount += args.size + 1 // condition isn't part of args
             val conditionVal = getSymbolVal(condition)
 //            val firstArgVal = getSymbolVal(args.head)
             // If all values are equal, condition is unused
@@ -116,6 +125,7 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
             addDependency(symbol, usedArg, currentCycle)
             assert(getSymbolVal(usedArg) == symbolVal, "Selected mux argument and output must have same value")
           case PrimOperation(opcode, args) =>
+            totalWireCount += args.size
             opcode match {
               case And =>
                 assert(args.size == 2)
@@ -138,7 +148,9 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
               case _ => reportAllAsUsed(opcode, args)
             }
           case LiteralAssignOperation() =>
-          case ReferenceOperation(src) => addDependency(symbol, src, currentCycle)
+          case ReferenceOperation(src) =>
+            totalWireCount += 1
+            addDependency(symbol, src, currentCycle)
         }
       case _ =>
     }

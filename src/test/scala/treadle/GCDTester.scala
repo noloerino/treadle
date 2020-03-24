@@ -186,7 +186,10 @@ class GCDTester extends FlatSpec with Matchers {
       f"processed $cycle cycles $elapsedSeconds%.6f seconds ${cycle.toDouble / (1000000.0 * elapsedSeconds)}%5.3f MHz"
     )
     tester.report()
-
+    tester.finish
+    val usedCount = tester.usageReporter.usedCount
+    val totalCount = tester.usageReporter.totalWireCount
+    println(s"used: ${usedCount} out of total: ${totalCount} (${tester.usageReporter.usedFraction})")
   }
 
   it should "run with InterpretedTester at Int size 16" in {
