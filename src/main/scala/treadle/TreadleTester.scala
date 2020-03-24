@@ -455,28 +455,28 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
 
   // Traverse the usage graph
   def finishAndFindDependentsOf(symbolName: String, cycle: Int): Boolean = {
-    val graph = usageReporter.concreteUsageGraph
-    // Perform mark and sweep
-    def getParents(symbol: Symbol, cycle: Int) = graph(cycle).getOrElse(symbol, mutable.Map())
-    val rootSet: mutable.Set[(Symbol, Int)] = mutable.Set()
-    getParents(engine.symbolTable.get(symbolName).get, cycle) foreach { case (s, c) => rootSet add ((s, c)) }
-    val stack: mutable.ArrayStack[(Symbol, Int)] = mutable.ArrayStack()
-    val marked: mutable.Set[(Symbol, Int)] = mutable.Set()
-    rootSet foreach { x => stack push x }
-    while (stack.nonEmpty) {
-      val (symbol, cycle) = stack.pop()
-      // Mark and add parents to stack
-      marked add ((symbol, cycle))
-      getParents(symbol, cycle) foreach {
-        case (s, c) if !marked.contains((s, c)) => stack push ((s, c))
-        case _ =>
-      }
-    }
-
-    println(s"*** At finish, examined symbol $symbolName @ $cycle; found dependencies on:")
-    marked.toList.filterNot(_._1.name.endsWith("/in"))
-      .sortWith((w1, w2) => if (w1._2 == w2._2) w1._1.name > w2._1.name else w1._2 > w2._2)
-      .foreach { case (symbol: Symbol, cycle: Int) => println(s"\t${symbol.name} @ $cycle")}
+//    val graph = usageReporter.concreteUsageGraph
+//    // Perform mark and sweep
+//    def getParents(symbol: Symbol, cycle: Int) = graph(cycle).getOrElse(symbol, mutable.Map())
+//    val rootSet: mutable.Set[(Symbol, Int)] = mutable.Set()
+//    getParents(engine.symbolTable.get(symbolName).get, cycle) foreach { case (s, c) => rootSet add ((s, c)) }
+//    val stack: mutable.ArrayStack[(Symbol, Int)] = mutable.ArrayStack()
+//    val marked: mutable.Set[(Symbol, Int)] = mutable.Set()
+//    rootSet foreach { x => stack push x }
+//    while (stack.nonEmpty) {
+//      val (symbol, cycle) = stack.pop()
+//      // Mark and add parents to stack
+//      marked add ((symbol, cycle))
+//      getParents(symbol, cycle) foreach {
+//        case (s, c) if !marked.contains((s, c)) => stack push ((s, c))
+//        case _ =>
+//      }
+//    }
+//
+//    println(s"*** At finish, examined symbol $symbolName @ $cycle; found dependencies on:")
+//    marked.toList.filterNot(_._1.name.endsWith("/in"))
+//      .sortWith((w1, w2) => if (w1._2 == w2._2) w1._1.name > w2._1.name else w1._2 > w2._2)
+//      .foreach { case (symbol: Symbol, cycle: Int) => println(s"\t${symbol.name} @ $cycle")}
     finish
   }
 

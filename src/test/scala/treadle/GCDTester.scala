@@ -16,7 +16,8 @@ limitations under the License.
 
 package treadle
 
-import firrtl.stage.FirrtlSourceAnnotation
+import firrtl.options.TargetDirAnnotation
+import firrtl.stage.{FirrtlSourceAnnotation, OutputFileAnnotation}
 import org.scalatest.{FlatSpec, Matchers}
 
 // scalastyle:off magic.number
@@ -150,7 +151,12 @@ class GCDTester extends FlatSpec with Matchers {
         y <- 1 to 100
       } yield (x, y, computeGcd(x, y)._1)
 
-    val tester = TreadleTester(Seq(FirrtlSourceAnnotation(gcdFirrtl)))
+    val tester = TreadleTester(Seq(
+      FirrtlSourceAnnotation(gcdFirrtl),
+      WriteVcdAnnotation,
+      TargetDirAnnotation("usage_vcds"),
+      OutputFileAnnotation("gcd.vcd")
+    ))
 
     val startTime = System.nanoTime()
     tester.poke("clock", 1)

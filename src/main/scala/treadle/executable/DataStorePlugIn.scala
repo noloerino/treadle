@@ -59,13 +59,15 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
   val opGraph: mutable.Map[Symbol, OperationInfo] = symbolTable.operationGraph
 
   private type Cycle = Int
-  // Maps target symbol to a map of source symbol -> cycle
-  private type CycleUsageGraph = mutable.Map[Symbol, mutable.Map[Symbol, Cycle]]
+  private val sinkCycleBuffer = mutable.ArrayBuffer[Int]()
+  // These buffers map (sink -> (src, cycle))
+  private val sinkBuffer = mutable.ArrayBuffer[Int]()
+  private val srcBuffer = mutable.ArrayBuffer[Int]()
+  private val srcCycleBuffer = mutable.ArrayBuffer[Int]()
+
   // Maps cycle to mapping of symbol to parents
-  val concreteUsageGraph: mutable.ArrayBuffer[CycleUsageGraph] = mutable.ArrayBuffer()
 
   private var currentCycle: Cycle = 0
-  private var currentMap: CycleUsageGraph = mutable.HashMap()
 
   private def getSymbolVal(symbol: Symbol): Int = {
     dataStore(symbol).intValue()
@@ -73,9 +75,14 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
 
   def updateCycleMap(): Unit = {
     // Called by tester when cycle is stepped
-    concreteUsageGraph += currentMap
     currentCycle += 1
-    currentMap = mutable.HashMap()
+  }
+
+  private def addDependency(sink: Symbol, src: Symbol, srcCycle: Int): Unit = {
+    sinkCycleBuffer += currentCycle
+    sinkBuffer += sink.uniqueId
+    srcBuffer += src.uniqueId
+    srcCycleBuffer += srcCycle
   }
 
   // scalastyle:off cyclomatic.complexity method.length
@@ -88,12 +95,11 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
     if (currentCycle > 0 && symbolTable.contains(s"${symbol.name}/in")) {
 //      println(s"register ${symbol.name} @ $currentCycle depended on input from previous cycle")
       // TODO more idiomatic way to get parent of register?
-      currentMap.put(symbol, mutable.HashMap((symbolTable(s"${symbol.name}/in"), currentCycle - 1)))
+      addDependency(symbol, symbolTable(s"${symbol.name}/in"), currentCycle - 1)
       return
     }
     // Check for other stmts
-    val symbolParents = mutable.HashMap[Symbol, Cycle]()
-    def reportAllAsUsed(opcode: PrimOp, args: List[Symbol]): Unit = args foreach { symbolParents.put(_, currentCycle) }
+    def reportAllAsUsed(opcode: PrimOp, args: List[Symbol]) = args foreach { addDependency(symbol, _, currentCycle) }
     val symbolVal = getSymbolVal(symbol)
     opGraph.get(symbol) match {
       case Some(opInfo) =>
@@ -103,11 +109,11 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
 //            val firstArgVal = getSymbolVal(args.head)
             // If all values are equal, condition is unused
 //            if (!args.foldRight(true)((arg, acc) => (getSymbolVal(arg) == firstArgVal) && acc)) {
-            symbolParents.put(condition, currentCycle)
+            addDependency(symbol, condition, currentCycle)
 //            }
             // Mux has 0 value as last argument; downcast because let's face it it's not going to be that big
             val usedArg = args.reverse(conditionVal)
-            symbolParents.put(usedArg, currentCycle)
+            addDependency(symbol, usedArg, currentCycle)
             assert(getSymbolVal(usedArg) == symbolVal, "Selected mux argument and output must have same value")
           case PrimOperation(opcode, args) =>
             opcode match {
@@ -116,8 +122,8 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
                 val inputA = args.head
                 val inputB = args.last
                 (getSymbolVal(inputA), getSymbolVal(inputB)) match {
-                  case (0, 1) => symbolParents.put(inputA, currentCycle)
-                  case (1, 0) => symbolParents.put(inputB, currentCycle)
+                  case (0, 1) => addDependency(symbol, inputA, currentCycle)
+                  case (1, 0) => addDependency(symbol, inputB, currentCycle)
                   case (0, 0) | (1, 1) | _ => reportAllAsUsed(opcode, args) // non-1b case
                 }
               case Or =>
@@ -125,21 +131,20 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
                 val inputA = args.head
                 val inputB = args.last
                 (getSymbolVal(inputA), getSymbolVal(inputB)) match {
-                  case (1, 0) => symbolParents.put(inputA, currentCycle)
-                  case (0, 1) => symbolParents.put(inputB, currentCycle)
+                  case (1, 0) => addDependency(symbol, inputA, currentCycle)
+                  case (0, 1) => addDependency(symbol, inputB, currentCycle)
                   case (0, 0) | (1, 1) | _ => reportAllAsUsed(opcode, args) // non-1b case
                 }
               case _ => reportAllAsUsed(opcode, args)
             }
           case LiteralAssignOperation() =>
-          case ReferenceOperation(src) => symbolParents.put(src, currentCycle)
+          case ReferenceOperation(src) => addDependency(symbol, src, currentCycle)
         }
       case _ =>
     }
 
 //    val parentString = (symbolParents map { _.name }).mkString(",")
 //    println(s"symbol ${symbol.name} @ $currentCycle = $symbolVal; depended on {$parentString}")
-    currentMap.put(symbol, symbolParents)
   }
 }
 
