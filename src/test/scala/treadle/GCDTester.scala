@@ -189,7 +189,7 @@ class GCDTester extends FlatSpec with Matchers {
     tester.finish
     val usedCount = tester.usageReporter.usedCount
     val totalCount = tester.usageReporter.totalWireCount
-    println(s"used: ${usedCount} out of total: ${totalCount} (${tester.usageReporter.usedFraction})")
+    println(tester.usageReporter.reportUsedFraction)
   }
 
   it should "run with InterpretedTester at Int size 16" in {

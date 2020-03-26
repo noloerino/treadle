@@ -59,21 +59,23 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
   val opGraph: mutable.Map[Symbol, OperationInfo] = symbolTable.operationGraph
 
   private type Cycle = Int
-  private val sinkCycleBuffer = mutable.ArrayBuffer[Int]()
-  // These buffers map (sink -> (src, cycle))
-  private val sinkBuffer = mutable.ArrayBuffer[Int]()
-  private val srcBuffer = mutable.ArrayBuffer[Int]()
-  private val srcCycleBuffer = mutable.ArrayBuffer[Int]()
+  private var currentCycle: Cycle = 0
+
+  private type CycleMap = mutable.Map[Symbol.ID, SrcMap] // keyed on SymbolID of sink wire
+  // contains src symbol IDs; since registers aren't processed here the dependency is always on the same cycle
+  private type SrcMap = mutable.BitSet
+  val mapsPerCycle = mutable.ArrayBuffer[CycleMap](mutable.Map())
+  var currentMap: CycleMap = mapsPerCycle(0)
 
   // Usually, it is reasonable to assume that more wires are used than not; this checks that
-  var usedCount = 0
+  var unusedCount = 0
   var totalWireCount = 0
 
-  def usedFraction: Double = if (totalWireCount > 0) usedCount.toDouble / totalWireCount.toDouble else 0.0
-
-  // Maps cycle to mapping of symbol to parents
-
-  private var currentCycle: Cycle = 0
+  def usedCount: Int = totalWireCount - unusedCount
+  def usedFraction: Double =
+    if (totalWireCount > 0) usedCount.toDouble / totalWireCount.toDouble else 0.0
+  def reportUsedFraction: String =
+    s"used $usedCount out of total $totalWireCount ($usedFraction)"
 
   private def getSymbolVal(symbol: Symbol): Int = {
     dataStore(symbol).intValue()
@@ -81,15 +83,15 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
 
   def updateCycleMap(): Unit = {
     // Called by tester when cycle is stepped
+    mapsPerCycle += currentMap
     currentCycle += 1
+    currentMap = mutable.Map()
   }
 
-  private def addDependency(sink: Symbol, src: Symbol, srcCycle: Int): Unit = {
-    usedCount += 1
-    sinkCycleBuffer += currentCycle
-    sinkBuffer += sink.uniqueId
-    srcBuffer += src.uniqueId
-    srcCycleBuffer += srcCycle
+  private def addAntiDependency(sink: Symbol, src: Symbol): Unit = {
+    unusedCount += 1
+    val srcMap: SrcMap = currentMap.getOrElseUpdate(sink.uniqueId, mutable.BitSet())
+    srcMap.add(src.uniqueId)
   }
 
   // scalastyle:off cyclomatic.complexity method.length
@@ -98,59 +100,52 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
     if (offset != -1) {
       return
     }
-    // Check for registers, which depend exclusively on the previous cycle
-    if (currentCycle > 0 && symbolTable.contains(s"${symbol.name}/in")) {
-//      println(s"register ${symbol.name} @ $currentCycle depended on input from previous cycle")
-      // TODO more idiomatic way to get parent of register?
-      totalWireCount += 1
-      addDependency(symbol, symbolTable(s"${symbol.name}/in"), currentCycle - 1)
-      return
-    }
-    // Check for other stmts
-    def reportAllAsUsed(opcode: PrimOp, args: List[Symbol]) = args foreach { addDependency(symbol, _, currentCycle) }
     val symbolVal = getSymbolVal(symbol)
     opGraph.get(symbol) match {
       case Some(opInfo) =>
+        totalWireCount += opInfo.totalSources
         opInfo match {
           case MuxOperation(condition, args) =>
-            totalWireCount += args.size + 1 // condition isn't part of args
             val conditionVal = getSymbolVal(condition)
-//            val firstArgVal = getSymbolVal(args.head)
-            // If all values are equal, condition is unused
-//            if (!args.foldRight(true)((arg, acc) => (getSymbolVal(arg) == firstArgVal) && acc)) {
-            addDependency(symbol, condition, currentCycle)
-//            }
-            // Mux has 0 value as last argument; downcast because let's face it it's not going to be that big
+            val argc = args.size
+            var i = 0
+            // Skip used arg (mux has 0 value as last argument)
+            while (i < argc - conditionVal - 1) {
+              addAntiDependency(symbol, args(i))
+              i+= 1
+            }
+            i += 1
+            while (i < argc) {
+              addAntiDependency(symbol, args(i))
+              i += 1
+            }
             val usedArg = args.reverse(conditionVal)
-            addDependency(symbol, usedArg, currentCycle)
             assert(getSymbolVal(usedArg) == symbolVal, "Selected mux argument and output must have same value")
           case PrimOperation(opcode, args) =>
-            totalWireCount += args.size
             opcode match {
               case And =>
                 assert(args.size == 2)
                 val inputA = args.head
                 val inputB = args.last
                 (getSymbolVal(inputA), getSymbolVal(inputB)) match {
-                  case (0, 1) => addDependency(symbol, inputA, currentCycle)
-                  case (1, 0) => addDependency(symbol, inputB, currentCycle)
-                  case (0, 0) | (1, 1) | _ => reportAllAsUsed(opcode, args) // non-1b case
+                  case (0, 1) => addAntiDependency(symbol, inputB)
+                  case (1, 0) => addAntiDependency(symbol, inputA)
+                  case (0, 0) | (1, 1) | _ =>
                 }
               case Or =>
                 assert(args.size == 2)
                 val inputA = args.head
                 val inputB = args.last
                 (getSymbolVal(inputA), getSymbolVal(inputB)) match {
-                  case (1, 0) => addDependency(symbol, inputA, currentCycle)
-                  case (0, 1) => addDependency(symbol, inputB, currentCycle)
-                  case (0, 0) | (1, 1) | _ => reportAllAsUsed(opcode, args) // non-1b case
+                  case (1, 0) => addAntiDependency(symbol, inputB)
+                  case (0, 1) => addAntiDependency(symbol, inputA)
+                  case (0, 0) | (1, 1) | _ =>
                 }
-              case _ => reportAllAsUsed(opcode, args)
+              case _ =>
             }
-          case LiteralAssignOperation() =>
-          case ReferenceOperation(src) =>
-            totalWireCount += 1
-            addDependency(symbol, src, currentCycle)
+          case _ =>
+//          case LiteralAssignOperation() =>
+//          case ReferenceOperation(_) =>
         }
       case _ =>
     }

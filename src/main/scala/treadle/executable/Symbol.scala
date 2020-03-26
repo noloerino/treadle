@@ -31,7 +31,7 @@ case class Symbol(
   firrtlType: firrtl.ir.Type,
   info:       Info
 ) {
-  val uniqueId = Symbol.genUId
+  val uniqueId: Symbol.ID = Symbol.genUId
 
   var index:          Int = -1
   var cardinalNumber: Int = -1
@@ -107,6 +107,8 @@ case class Symbol(
 }
 
 object Symbol {
+
+  type ID = Int
   private var counter: Int = 0
 
   def genUId(): Int = {

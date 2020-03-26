@@ -1,0 +1,65 @@
+file loaded in 0.155714116 seconds, 20 symbols, 15 statements
+processed 11 cycles 0.282718 seconds 0.000 MHz
+test GCD Success: 8281 tests passed in 128955 cycles in 0.290642 seconds 443690.61 Hz
+
+file loaded in 0.015201246 seconds, 20 symbols, 15 statements
+processed 11 cycles 0.270282 seconds 0.000 MHz
+test GCD Success: 8281 tests passed in 128955 cycles in 0.271277 seconds 475361.96 Hz
+
+file loaded in 0.02282155 seconds, 20 symbols, 15 statements
+processed 11 cycles 0.236903 seconds 0.000 MHz
+test GCD Success: 8281 tests passed in 128955 cycles in 0.237996 seconds 541837.04 Hz
+
+file loaded in 0.002704694 seconds, 20 symbols, 15 statements
+processed 165436 cycles 1.945852 seconds 0.085 MHz
+test GCD Success: 10000 tests passed in 165436 cycles in 4.470737 seconds 37004.19 Hz
+used: 0 out of total: 0 (0.0)
+
+
+
+Process finished with exit code 0
+
+=== with array buffers
+file loaded in 0.083926553 seconds, 20 symbols, 15 statements
+processed 11 cycles 4.182430 seconds 0.000 MHz
+test GCD Success: 8281 tests passed in 128955 cycles in 4.190337 seconds 30774.37 Hz
+
+file loaded in 0.009545483 seconds, 20 symbols, 15 statements
+processed 11 cycles 1.129562 seconds 0.000 MHz
+test GCD Success: 8281 tests passed in 128955 cycles in 1.131191 seconds 113999.34 Hz
+
+file loaded in 0.021449479 seconds, 20 symbols, 15 statements
+processed 11 cycles 0.898353 seconds 0.000 MHz
+test GCD Success: 8281 tests passed in 128955 cycles in 0.899187 seconds 143412.84 Hz
+
+file loaded in 0.002526876 seconds, 20 symbols, 15 statements
+processed 165436 cycles 2.244166 seconds 0.074 MHz
+test GCD Success: 10000 tests passed in 165436 cycles in 7.821174 seconds 21152.32 Hz
+used: 6617459 out of total: 7940951 (0.8333333123450831)
+
+
+
+Process finished with exit code 0
+
+=== antidependencies
+file loaded in 0.144680752 seconds, 20 symbols, 15 statements
+processed 11 cycles 0.884616 seconds 0.000 MHz
+test GCD Success: 8281 tests passed in 128955 cycles in 0.896354 seconds 143866.19 Hz
+
+file loaded in 0.043472169 seconds, 20 symbols, 15 statements
+processed 11 cycles 0.740878 seconds 0.000 MHz
+test GCD Success: 8281 tests passed in 128955 cycles in 0.743267 seconds 173497.53 Hz
+
+file loaded in 0.029261912 seconds, 20 symbols, 15 statements
+processed 11 cycles 0.619261 seconds 0.000 MHz
+test GCD Success: 8281 tests passed in 128955 cycles in 0.627939 seconds 205362.17 Hz
+
+file loaded in 0.007144879 seconds, 20 symbols, 15 statements
+processed 165436 cycles 3.112312 seconds 0.053 MHz
+test GCD Success: 10000 tests passed in 165436 cycles in 6.943655 seconds 23825.49 Hz
+used 6286587 out of total 7610079 (0.8260869565217391)
+
+
+
+Process finished with exit code 0
+

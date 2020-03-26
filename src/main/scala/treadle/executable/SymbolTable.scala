@@ -27,15 +27,25 @@ import scala.collection.immutable.Set
 import scala.collection.mutable
 
 // Encodes information about an operation and its arguments.
-sealed trait OperationInfo
+sealed trait OperationInfo {
+  def totalSources: Int
+}
 // Muxes; arguments are ordered
-case class MuxOperation(condition: Symbol, args: List[Symbol]) extends OperationInfo
+case class MuxOperation(condition: Symbol, args: List[Symbol]) extends OperationInfo {
+  override def totalSources: Int = 1 + args.size
+}
 // Primitive operations like + - & |, etc.; args are ordered
-case class PrimOperation(opcode: PrimOp, args: List[Symbol]) extends OperationInfo
+case class PrimOperation(opcode: PrimOp, args: List[Symbol]) extends OperationInfo {
+  override def totalSources: Int = args.size
+}
 // Assignment of a literal value to a wire
-case class LiteralAssignOperation() extends OperationInfo
+case class LiteralAssignOperation() extends OperationInfo {
+  override def totalSources: Int = 0
+}
 // References like slicing or indexing or direct assignment
-case class ReferenceOperation(src: Symbol) extends OperationInfo
+case class ReferenceOperation(src: Symbol) extends OperationInfo {
+  override def totalSources: Int = 1
+}
 
 class SymbolTable(val nameToSymbol: mutable.HashMap[String, Symbol]) {
 

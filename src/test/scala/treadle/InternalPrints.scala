@@ -82,9 +82,7 @@ class InternalPrints extends FreeSpec with Matchers with LazyLogging
         tester.step()
       }
 
-      val usedCount = tester.usageReporter.usedCount
-      val totalCount = tester.usageReporter.totalWireCount
-      println(s"used: ${usedCount} out of total: ${totalCount} (${tester.usageReporter.usedFraction})")
+      println(tester.usageReporter.reportUsedFraction)
       tester.finishAndFindDependentsOf("q", 5)
 
     }
