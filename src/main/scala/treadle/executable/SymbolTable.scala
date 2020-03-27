@@ -60,13 +60,38 @@ case class ReferenceOperation(src: Symbol) extends OperationInfo {
 // Generated in path compression algorithm
 case class StaticDependencyBundle(srcs: Set[Symbol]) extends OperationInfo {
   override def totalSources: Int = srcs.size
-  override def allSrcs: Set[Symbol] = srcs.toSet
+  override def allSrcs: Set[Symbol] = srcs
   override def isCompressible: Boolean = false
 }
 
 class SymbolTable(val nameToSymbol: mutable.HashMap[String, Symbol]) {
 
   val operationGraph: mutable.HashMap[Symbol, OperationInfo] = new mutable.HashMap
+
+  // Compresses the operationGraph in place by most connections into StaticDependencyBundle when possible.
+  // Does a single pass, traversing all connected components of the graph.
+  private def compressOperationGraph(): Unit = {
+    val visited: mutable.Set[Symbol] = mutable.Set()
+    operationGraph.keysIterator.foreach { compressOperation(_, visited) }
+  }
+
+  // Perform compression on given symbol; visited set prevents combinatorial loops
+  private def compressOperation(symbol: Symbol, visited: mutable.Set[Symbol]): Unit = {
+    if (!operationGraph.contains(symbol) || visited.contains(symbol)) {
+      return
+    }
+    visited.add(symbol)
+    val opInfo = operationGraph(symbol)
+    if (!opInfo.isCompressible) {
+      return
+    }
+    val srcs = opInfo.allSrcs
+    srcs.foreach { compressOperation(_, visited) }
+    // After performing compression on all sources, we can just visit the immediate parents
+    val compressedSrcs: Set[Symbol] = srcs.flatMap(sym => if (operationGraph.contains(sym)) operationGraph(sym).allSrcs + sym else Set(sym))
+//    println(s"${Console.RED} I COMPRESSED FOR ${symbol.name}${Console.RESET}")
+    operationGraph(symbol) = StaticDependencyBundle(compressedSrcs)
+  }
 
   var childrenOf: DiGraph[Symbol] = DiGraph[Symbol](Map.empty[Symbol, Set[Symbol]])
   var parentsOf:  DiGraph[Symbol] = DiGraph[Symbol](Map.empty[Symbol, Set[Symbol]])
@@ -655,23 +680,26 @@ object SymbolTable extends LazyLogging {
 
     val symbolTable = SymbolTable(nameToSymbol)
     symbolTable.operationGraph ++= operationGraph
-    /*
-    println("===Begin operation graph===")
-    for ((symbol, opInfo) <- symbolTable.operationGraph) {
-      print(s"\t${symbol.name}")
-      opInfo match {
-        case MuxOperation(condition, args) =>
-          println(s" <- mux(${condition.name}, ${(args map(_.name)).mkString(", ")})")
-        case PrimOperation(opcode, args) =>
-          println(s" <- ${opcode.serialize}(${(args map(_.name)).mkString(", ")})")
-        case LiteralAssignOperation() =>
-          println(s" <- [literal]")
-        case ReferenceOperation(src) =>
-          println(s" <- ${src.name}")
+    symbolTable.compressOperationGraph()
+    def printOperationGraph() = {
+      println("===Begin operation graph===")
+      for ((symbol, opInfo) <- symbolTable.operationGraph) {
+        print(s"\t${symbol.name}")
+        opInfo match {
+          case MuxOperation(condition, args) =>
+            println(s" <- mux(${condition.name}, ${(args map(_.name)).mkString(", ")})")
+          case PrimOperation(opcode, args) =>
+            println(s" <- ${opcode.serialize}(${(args map(_.name)).mkString(", ")})")
+          case LiteralAssignOperation() =>
+            println(s" <- [literal]")
+          case ReferenceOperation(src) =>
+            println(s" <- ${src.name}")
+          case StaticDependencyBundle(srcs) => println(s" <- <compressed> ${srcs.map { _.name }}")
+        }
       }
+      println("===End operation graph===")
     }
-    println("===End operation graph===")
-    */
+//    printOperationGraph()
     symbolTable.instanceNames ++= instanceNames
     symbolTable.instanceNameToModuleName ++= instanceNameToModuleName
     symbolTable.registerNames ++= registerNames
