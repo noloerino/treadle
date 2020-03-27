@@ -78,7 +78,14 @@ class GCDTester extends FlatSpec with Matchers {
         y <- 10 to 100
       } yield (x, y, computeGcd(x, y)._1)
 
-    val tester = TreadleTester(Seq(FirrtlSourceAnnotation(gcdFirrtl)))
+    val tester = TreadleTester(
+      Seq(
+        FirrtlSourceAnnotation(gcdFirrtl),
+        WriteVcdAnnotation,
+        TargetDirAnnotation("usage_vcds"),
+        OutputFileAnnotation("gcd_many.vcd")
+      )
+    )
 
     val startTime = System.nanoTime()
     tester.poke("clock", 1)
@@ -155,7 +162,7 @@ class GCDTester extends FlatSpec with Matchers {
       FirrtlSourceAnnotation(gcdFirrtl),
       WriteVcdAnnotation,
       TargetDirAnnotation("usage_vcds"),
-      OutputFileAnnotation("gcd.vcd")
+      OutputFileAnnotation("gcd_many.vcd")
     ))
 
     val startTime = System.nanoTime()
