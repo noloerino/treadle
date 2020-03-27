@@ -17,7 +17,6 @@ limitations under the License.
 package treadle.executable
 
 import firrtl.PrimOps.{And, Or}
-import firrtl.ir.PrimOp
 
 import scala.collection.mutable
 
@@ -101,57 +100,49 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
       return
     }
     val symbolVal = getSymbolVal(symbol)
-    opGraph.get(symbol) match {
-      case Some(opInfo) =>
-        totalWireCount += opInfo.totalSources
-        opInfo match {
-          case MuxOperation(condition, args) =>
-            val conditionVal = getSymbolVal(condition)
-            val argc = args.size
-            var i = 0
-            // Skip used arg (mux has 0 value as last argument)
-            while (i < argc - conditionVal - 1) {
-              addAntiDependency(symbol, args(i))
-              i+= 1
+    val opInfo = opGraph.getOrElse(symbol, return)
+    totalWireCount += opInfo.totalSources
+    opInfo match {
+      case MuxOperation(condition, args) =>
+        val conditionVal = getSymbolVal(condition)
+        val argc = args.size
+        var i = 0
+        // Skip used arg (mux has 0 value as last argument)
+        while (i < argc - conditionVal - 1) {
+          addAntiDependency(symbol, args(i))
+          i += 1
+        }
+        i += 1
+        while (i < argc) {
+          addAntiDependency(symbol, args(i))
+          i += 1
+        }
+        val usedArg = args.reverse(conditionVal)
+        assert(getSymbolVal(usedArg) == symbolVal, "Selected mux argument and output must have same value")
+      case PrimOperation(opcode, args) =>
+        opcode match {
+          case And =>
+            assert(args.size == 2)
+            val inputA = args.head
+            val inputB = args.last
+            (getSymbolVal(inputA), getSymbolVal(inputB)) match {
+              case (0, 1) => addAntiDependency(symbol, inputB)
+              case (1, 0) => addAntiDependency(symbol, inputA)
+              case (0, 0) | (1, 1) | _ =>
             }
-            i += 1
-            while (i < argc) {
-              addAntiDependency(symbol, args(i))
-              i += 1
-            }
-            val usedArg = args.reverse(conditionVal)
-            assert(getSymbolVal(usedArg) == symbolVal, "Selected mux argument and output must have same value")
-          case PrimOperation(opcode, args) =>
-            opcode match {
-              case And =>
-                assert(args.size == 2)
-                val inputA = args.head
-                val inputB = args.last
-                (getSymbolVal(inputA), getSymbolVal(inputB)) match {
-                  case (0, 1) => addAntiDependency(symbol, inputB)
-                  case (1, 0) => addAntiDependency(symbol, inputA)
-                  case (0, 0) | (1, 1) | _ =>
-                }
-              case Or =>
-                assert(args.size == 2)
-                val inputA = args.head
-                val inputB = args.last
-                (getSymbolVal(inputA), getSymbolVal(inputB)) match {
-                  case (1, 0) => addAntiDependency(symbol, inputB)
-                  case (0, 1) => addAntiDependency(symbol, inputA)
-                  case (0, 0) | (1, 1) | _ =>
-                }
-              case _ =>
+          case Or =>
+            assert(args.size == 2)
+            val inputA = args.head
+            val inputB = args.last
+            (getSymbolVal(inputA), getSymbolVal(inputB)) match {
+              case (1, 0) => addAntiDependency(symbol, inputB)
+              case (0, 1) => addAntiDependency(symbol, inputA)
+              case (0, 0) | (1, 1) | _ =>
             }
           case _ =>
-//          case LiteralAssignOperation() =>
-//          case ReferenceOperation(_) =>
         }
       case _ =>
     }
-
-//    val parentString = (symbolParents map { _.name }).mkString(",")
-//    println(s"symbol ${symbol.name} @ $currentCycle = $symbolVal; depended on {$parentString}")
   }
 }
 

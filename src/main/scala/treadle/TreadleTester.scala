@@ -456,31 +456,31 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
   // Traverse the usage graph
   def finishAndFindDependentsOf(symbolName: String, cycle: Int): Boolean = {
     // Perform mark and sweep
-    def getSrcs(symbol: Symbol, cycle: Int): List[(Symbol, Int)] = {
+    def getSrcs(symbol: Symbol, cycle: Int): Set[(Symbol, Int)] = {
       val symbolTable = usageReporter.symbolTable
       // Register case
       if (symbolTable.contains(s"${symbol.name}/in")) {
-        return List((symbolTable(s"${symbol.name}/in"), cycle - 1))
+        return Set((symbolTable(s"${symbol.name}/in"), cycle - 1))
       }
       // General case
       val antiSrcs: mutable.BitSet = usageReporter.mapsPerCycle(cycle).getOrElse(symbol.uniqueId, mutable.BitSet())
       val allPossibleSrcs = symbolTable.operationGraph.get(symbol) match {
         case Some(sym) => sym.allSrcs
-        case _ => return List()
+        case _ => return Set()
       }
-      allPossibleSrcs.filterNot(s => antiSrcs.contains(s.uniqueId)) map { (_, cycle) }
+      allPossibleSrcs.filterNot(s => antiSrcs.contains(s.uniqueId)).map { (_, cycle) }
     }
     val rootSet: mutable.Set[(Symbol, Int)] = mutable.Set()
-    getSrcs(engine.symbolTable(symbolName), cycle) foreach { case (s, c) => rootSet add ((s, c)) }
+    getSrcs(engine.symbolTable(symbolName), cycle) foreach { case depPair => rootSet.add(depPair) }
     val stack: mutable.ArrayStack[(Symbol, Int)] = mutable.ArrayStack()
     val marked: mutable.Set[(Symbol, Int)] = mutable.Set()
-    rootSet foreach { x => stack push x }
+    rootSet foreach { stack.push }
     while (stack.nonEmpty) {
       val (symbol, cycle) = stack.pop()
       // Mark and add parents to stack
-      marked add ((symbol, cycle))
+      marked.add((symbol, cycle))
       getSrcs(symbol, cycle) foreach {
-        case (s, c) if !marked.contains((s, c)) => stack push ((s, c))
+        case depPair if !marked.contains(depPair) => stack.push(depPair)
         case _ =>
       }
     }

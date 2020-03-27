@@ -19,6 +19,7 @@ package treadle.executable
 import firrtl._
 import firrtl.graph.DiGraph
 import firrtl.ir._
+import firrtl.PrimOps.{And, Or}
 import logger.LazyLogging
 import treadle.utils.FindModule
 import treadle.{ScalaBlackBox, ScalaBlackBoxFactory}
@@ -29,26 +30,38 @@ import scala.collection.mutable
 // Encodes information about an operation and its arguments.
 sealed trait OperationInfo {
   def totalSources: Int
-  def allSrcs: List[Symbol] = List()
+  def allSrcs: Set[Symbol] = Set()
+  // Determines if the operation can be compressed
+  def isCompressible: Boolean
 }
 // Muxes; arguments are ordered
 case class MuxOperation(condition: Symbol, args: List[Symbol]) extends OperationInfo {
   override def totalSources: Int = 1 + args.size
-  override def allSrcs: List[Symbol] = List(condition) ++ args
+  override def allSrcs: Set[Symbol] = Set(condition) ++ args.toSet
+  override def isCompressible: Boolean = false
 }
 // Primitive operations like + - & |, etc.; args are ordered
 case class PrimOperation(opcode: PrimOp, args: List[Symbol]) extends OperationInfo {
   override def totalSources: Int = args.size
-  override def allSrcs: List[Symbol] = args
+  override def allSrcs: Set[Symbol] = args.toSet
+  override def isCompressible: Boolean = !(opcode == And || opcode == Or)
 }
 // Assignment of a literal value to a wire
 case class LiteralAssignOperation() extends OperationInfo {
   override def totalSources: Int = 0
+  override def isCompressible: Boolean = false
 }
 // References like slicing or indexing or direct assignment
 case class ReferenceOperation(src: Symbol) extends OperationInfo {
   override def totalSources: Int = 1
-  override def allSrcs: List[Symbol] = List(src)
+  override def allSrcs: Set[Symbol] = Set(src)
+  override def isCompressible: Boolean = true
+}
+// Generated in path compression algorithm
+case class StaticDependencyBundle(srcs: Set[Symbol]) extends OperationInfo {
+  override def totalSources: Int = srcs.size
+  override def allSrcs: Set[Symbol] = srcs.toSet
+  override def isCompressible: Boolean = false
 }
 
 class SymbolTable(val nameToSymbol: mutable.HashMap[String, Symbol]) {
