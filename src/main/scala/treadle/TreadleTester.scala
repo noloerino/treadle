@@ -471,15 +471,15 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
       allPossibleSrcs.filterNot(s => antiSrcs.contains(s.uniqueId)).map { (_, cycle) }
     }
     val rootSet: mutable.Set[(Symbol, Int)] = mutable.Set()
-    getSrcs(engine.symbolTable(symbolName), cycle) foreach { case depPair => rootSet.add(depPair) }
+    getSrcs(engine.symbolTable(symbolName), cycle).foreach { case depPair => rootSet.add(depPair) }
     val stack: mutable.ArrayStack[(Symbol, Int)] = mutable.ArrayStack()
     val marked: mutable.Set[(Symbol, Int)] = mutable.Set()
-    rootSet foreach { stack.push }
+    rootSet.foreach { stack.push }
     while (stack.nonEmpty) {
       val (symbol, cycle) = stack.pop()
       // Mark and add parents to stack
       marked.add((symbol, cycle))
-      getSrcs(symbol, cycle) foreach {
+      getSrcs(symbol, cycle).foreach {
         case depPair if !marked.contains(depPair) => stack.push(depPair)
         case _ =>
       }
