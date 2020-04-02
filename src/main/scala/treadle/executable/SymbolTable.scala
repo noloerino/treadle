@@ -29,39 +29,39 @@ import scala.collection.mutable
 
 // Encodes information about an operation and its arguments.
 sealed trait OperationInfo {
-  def totalSources: Int
-  def allSrcs: Set[Symbol] = Set()
+  val totalSources: Int
+  val allSrcs: Set[Symbol] = Set()
   // Determines if the operation can be compressed
-  def isCompressible: Boolean
+  val isCompressible: Boolean
 }
 // Muxes; arguments are ordered
-case class MuxOperation(condition: Symbol, args: List[Symbol]) extends OperationInfo {
-  override val totalSources: Int = 1 + args.size
-  override def allSrcs: Set[Symbol] = Set(condition) ++ args.toSet
-  override def isCompressible: Boolean = false
+case class MuxOperation(condition: Symbol, trueSym: Symbol, falseSym: Symbol) extends OperationInfo {
+  override val totalSources: Int = 3
+  override val allSrcs: Set[Symbol] = Set(condition, trueSym, falseSym)
+  override val isCompressible: Boolean = false
 }
 // Primitive operations like + - & |, etc.; args are ordered
 case class PrimOperation(opcode: PrimOp, args: List[Symbol]) extends OperationInfo {
   override val totalSources: Int = args.size
-  override def allSrcs: Set[Symbol] = args.toSet
-  override def isCompressible: Boolean = !(opcode == And || opcode == Or)
+  override val allSrcs: Set[Symbol] = args.toSet
+  override val isCompressible: Boolean = !(opcode == And || opcode == Or)
 }
 // Assignment of a literal value to a wire
 case class LiteralAssignOperation() extends OperationInfo {
   override val totalSources: Int = 0
-  override def isCompressible: Boolean = false
+  override val isCompressible: Boolean = false
 }
 // References like slicing or indexing or direct assignment
 case class ReferenceOperation(src: Symbol) extends OperationInfo {
   override val totalSources: Int = 1
-  override def allSrcs: Set[Symbol] = Set(src)
-  override def isCompressible: Boolean = true
+  override val allSrcs: Set[Symbol] = Set(src)
+  override val isCompressible: Boolean = true
 }
 // Generated in path compression algorithm
 case class StaticDependencyBundle(srcs: Set[Symbol]) extends OperationInfo {
   override val totalSources: Int = srcs.size
-  override def allSrcs: Set[Symbol] = srcs
-  override def isCompressible: Boolean = false
+  override val allSrcs: Set[Symbol] = srcs
+  override val isCompressible: Boolean = false
 }
 
 class SymbolTable(val nameToSymbol: mutable.HashMap[String, Symbol]) {
@@ -89,7 +89,6 @@ class SymbolTable(val nameToSymbol: mutable.HashMap[String, Symbol]) {
     srcs.foreach { compressOperation(_, visited) }
     // After performing compression on all sources, we can just visit the immediate parents
     val compressedSrcs: Set[Symbol] = srcs.flatMap(sym => if (operationGraph.contains(sym)) operationGraph(sym).allSrcs + sym else Set(sym))
-//    println(s"${Console.RED} I COMPRESSED FOR ${symbol.name}${Console.RESET}")
     operationGraph(symbol) = StaticDependencyBundle(compressedSrcs)
   }
 
@@ -340,11 +339,11 @@ object SymbolTable extends LazyLogging {
             val conditionRefs = expressionToReferences(condition)
             val trueRefs = expressionToReferences(trueExpression)
             val falseRefs = expressionToReferences(falseExpression)
+            // TODO handle < 1 case to allow constants in one of the arguments
             if (!(conditionRefs.size == 1 && trueRefs.size == 1 && falseRefs.size == 1)) {
               StaticDependencyBundle(conditionRefs ++ trueRefs ++ falseRefs)
-//              throw new Exception(s"expressionToOpType: Usage graph cannot handle mux with more than one symbol in some argument: $expression")
             } else {
-              MuxOperation(conditionRefs.head, List(trueRefs.head, falseRefs.head))
+              MuxOperation(conditionRefs.head, trueRefs.head, falseRefs.head)
             }
           case _: WRef | _: WSubField | _: WSubIndex =>
             // For direct assignments/indices, consider it a direct dependency
@@ -688,8 +687,8 @@ object SymbolTable extends LazyLogging {
       for ((symbol, opInfo) <- symbolTable.operationGraph) {
         print(s"\t${symbol.name}")
         opInfo match {
-          case MuxOperation(condition, args) =>
-            println(s" <- mux(${condition.name}, ${(args map(_.name)).mkString(", ")})")
+          case MuxOperation(condition, trueSym, falseSym) =>
+            println(s" <- mux(${condition.name}, ${trueSym.name}, ${falseSym.name})")
           case PrimOperation(opcode, args) =>
             println(s" <- ${opcode.serialize}(${(args map(_.name)).mkString(", ")})")
           case LiteralAssignOperation() =>

@@ -112,21 +112,10 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
       opInfo => {
         totalWireCount += opInfo.totalSources
         opInfo match {
-          case MuxOperation(condition, args) =>
+          case MuxOperation(condition, trueSym, falseSym) =>
             val conditionVal = getSymbolVal(condition)
-            val argc = args.size
-            var i = 0
-            // Skip used arg (mux has 0 value as last argument)
-            while (i < argc - conditionVal - 1) {
-              addAntiDependency(symbol, args(i))
-              i += 1
-            }
-            val usedArg = args(i)
-            i += 1
-            while (i < argc) {
-              addAntiDependency(symbol, args(i))
-              i += 1
-            }
+            addAntiDependency(symbol, if (conditionVal == 1) falseSym else trueSym)
+            val usedArg = if (conditionVal == 1) trueSym else falseSym
             assert(getSymbolVal(usedArg) == symbolVal, "Selected mux argument and output must have same value")
           case PrimOperation(opcode, args) =>
             opcode match {
