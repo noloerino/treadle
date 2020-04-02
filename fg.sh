@@ -1,2 +1,3 @@
-# Last argument should be pid of sbt, obtained from `sbt`
-./profiler.sh -d 10 -f flamegraph.svg $@
+PID=$(jps | grep sbt-launch | awk '{ print $1 }')
+./profiler.sh -d 10 -f flamegraph.svg $PID
+    

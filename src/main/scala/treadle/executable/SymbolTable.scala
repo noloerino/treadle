@@ -36,30 +36,30 @@ sealed trait OperationInfo {
 }
 // Muxes; arguments are ordered
 case class MuxOperation(condition: Symbol, args: List[Symbol]) extends OperationInfo {
-  override def totalSources: Int = 1 + args.size
+  override val totalSources: Int = 1 + args.size
   override def allSrcs: Set[Symbol] = Set(condition) ++ args.toSet
   override def isCompressible: Boolean = false
 }
 // Primitive operations like + - & |, etc.; args are ordered
 case class PrimOperation(opcode: PrimOp, args: List[Symbol]) extends OperationInfo {
-  override def totalSources: Int = args.size
+  override val totalSources: Int = args.size
   override def allSrcs: Set[Symbol] = args.toSet
   override def isCompressible: Boolean = !(opcode == And || opcode == Or)
 }
 // Assignment of a literal value to a wire
 case class LiteralAssignOperation() extends OperationInfo {
-  override def totalSources: Int = 0
+  override val totalSources: Int = 0
   override def isCompressible: Boolean = false
 }
 // References like slicing or indexing or direct assignment
 case class ReferenceOperation(src: Symbol) extends OperationInfo {
-  override def totalSources: Int = 1
+  override val totalSources: Int = 1
   override def allSrcs: Set[Symbol] = Set(src)
   override def isCompressible: Boolean = true
 }
 // Generated in path compression algorithm
 case class StaticDependencyBundle(srcs: Set[Symbol]) extends OperationInfo {
-  override def totalSources: Int = srcs.size
+  override val totalSources: Int = srcs.size
   override def allSrcs: Set[Symbol] = srcs
   override def isCompressible: Boolean = false
 }
@@ -366,7 +366,12 @@ object SymbolTable extends LazyLogging {
       }
 
       def addOperationDependency(sensitiveSymbol: Symbol, expr: Expression): Unit = {
-        operationGraph.put(sensitiveSymbol, expressionToOpType(expr))
+        try {
+          operationGraph(sensitiveSymbol) = expressionToOpType(expr)
+          // TODO a bandaid
+        } catch {
+          case _: Exception =>
+        }
       }
 
       def getClockSymbol(expression: Expression): Option[Symbol] = {

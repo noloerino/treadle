@@ -438,7 +438,8 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
     }
     s"test ${engine.ast.main} " +
       s"$status $expectationsMet tests passed " +
-      f"in $cycleCount cycles in $elapsedSeconds%.6f seconds ${cycleCount / elapsedSeconds}%.2f Hz"
+      f"in $cycleCount cycles in $elapsedSeconds%.6f seconds ${cycleCount / elapsedSeconds}%.2f Hz" +
+      s"; ${usageReporter.reportUsedFraction}"
   }
 
   /**

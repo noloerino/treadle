@@ -61,20 +61,26 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
   private var currentCycle: Cycle = 0
 
   private type CycleMap = mutable.Map[Symbol.ID, SrcMap] // keyed on SymbolID of sink wire
+  private def newCycleMap: CycleMap = mutable.Map().withDefault(_ => mutable.BitSet())
   // contains src symbol IDs; since registers aren't processed here the dependency is always on the same cycle
   private type SrcMap = mutable.BitSet
-  val mapsPerCycle = mutable.ArrayBuffer[CycleMap](mutable.Map())
+  val mapsPerCycle = mutable.ArrayBuffer[CycleMap](newCycleMap)
   var currentMap: CycleMap = mapsPerCycle(0)
 
   // Usually, it is reasonable to assume that more wires are used than not; this checks that
   var unusedCount = 0
   var totalWireCount = 0
+  var ignoredSymbolCount = 0
+  var totalVisitedCount = 0
 
   def usedCount: Int = totalWireCount - unusedCount
   def usedFraction: Double =
     if (totalWireCount > 0) usedCount.toDouble / totalWireCount.toDouble else 0.0
+  def ignoredFraction: Double =
+    if (totalVisitedCount > 0) ignoredSymbolCount.toDouble / totalVisitedCount.toDouble else 0.0
   def reportUsedFraction: String =
-    s"used $usedCount out of total $totalWireCount ($usedFraction)"
+    s"used $usedCount out of total $totalWireCount ($usedFraction)" +
+      (if (ignoredSymbolCount > 0) s"; ignored $ignoredSymbolCount out of $totalVisitedCount ($ignoredFraction)" else "")
 
   private def getSymbolVal(symbol: Symbol): Int = {
     dataStore(symbol).intValue()
@@ -84,65 +90,73 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
     // Called by tester when cycle is stepped
     mapsPerCycle += currentMap
     currentCycle += 1
-    currentMap = mutable.Map()
+    currentMap = newCycleMap
   }
 
   private def addAntiDependency(sink: Symbol, src: Symbol): Unit = {
     unusedCount += 1
-    val srcMap: SrcMap = currentMap.getOrElseUpdate(sink.uniqueId, mutable.BitSet())
+    val srcMap: SrcMap = currentMap(sink.uniqueId)
     srcMap.add(src.uniqueId)
   }
 
   // scalastyle:off cyclomatic.complexity method.length
   def run(symbol: Symbol, offset: Int = -1, previousValue: BigInt): Unit = {
     // TODO problem: clock is never here
+    totalWireCount += 1
     if (offset != -1) {
+      ignoredSymbolCount += 1
       return
     }
     val symbolVal = getSymbolVal(symbol)
-    val opInfo = opGraph.getOrElse(symbol, return)
-    totalWireCount += opInfo.totalSources
-    opInfo match {
-      case MuxOperation(condition, args) =>
-        val conditionVal = getSymbolVal(condition)
-        val argc = args.size
-        var i = 0
-        // Skip used arg (mux has 0 value as last argument)
-        while (i < argc - conditionVal - 1) {
-          addAntiDependency(symbol, args(i))
-          i += 1
-        }
-        i += 1
-        while (i < argc) {
-          addAntiDependency(symbol, args(i))
-          i += 1
-        }
-        val usedArg = args.reverse(conditionVal)
-        assert(getSymbolVal(usedArg) == symbolVal, "Selected mux argument and output must have same value")
-      case PrimOperation(opcode, args) =>
-        opcode match {
-          case And =>
-            assert(args.size == 2)
-            val inputA = args.head
-            val inputB = args.last
-            (getSymbolVal(inputA), getSymbolVal(inputB)) match {
-              case (0, 1) => addAntiDependency(symbol, inputB)
-              case (1, 0) => addAntiDependency(symbol, inputA)
-              case (0, 0) | (1, 1) | _ =>
+    opGraph.get(symbol).foreach(
+      opInfo => {
+        totalWireCount += opInfo.totalSources
+        opInfo match {
+          case MuxOperation(condition, args) =>
+            val conditionVal = getSymbolVal(condition)
+            val argc = args.size
+            var i = 0
+            // Skip used arg (mux has 0 value as last argument)
+            while (i < argc - conditionVal - 1) {
+              addAntiDependency(symbol, args(i))
+              i += 1
             }
-          case Or =>
-            assert(args.size == 2)
-            val inputA = args.head
-            val inputB = args.last
-            (getSymbolVal(inputA), getSymbolVal(inputB)) match {
-              case (1, 0) => addAntiDependency(symbol, inputB)
-              case (0, 1) => addAntiDependency(symbol, inputA)
-              case (0, 0) | (1, 1) | _ =>
+            i += 1
+            while (i < argc) {
+              addAntiDependency(symbol, args(i))
+              i += 1
+            }
+            val usedArg = args.reverse(conditionVal)
+            assert(getSymbolVal(usedArg) == symbolVal, "Selected mux argument and output must have same value")
+          case PrimOperation(opcode, args) =>
+            opcode match {
+              case And =>
+                if (args.size < 2) return
+                assert(args.size == 2, s"And expected args list of size 2, got $args")
+                val inputA = args.head
+                val inputB = args.last
+                (getSymbolVal(inputA), getSymbolVal(inputB)) match {
+                  case (0, 1) => addAntiDependency(symbol, inputB)
+                  case (1, 0) => addAntiDependency(symbol, inputA)
+                  case (0, 0) | (1, 1) | _ =>
+                }
+              case Or =>
+                if (args.size < 2) return
+                assert(args.size == 2, s"Or expected args list of size 2, got $args")
+                val inputA = args.head
+                val inputB = args.last
+                (getSymbolVal(inputA), getSymbolVal(inputB)) match {
+                  case (1, 0) => addAntiDependency(symbol, inputB)
+                  case (0, 1) => addAntiDependency(symbol, inputA)
+                  case (0, 0) | (1, 1) | _ =>
+                }
+              case _ =>
             }
           case _ =>
         }
-      case _ =>
-    }
+      }
+    )
+
   }
 }
 
