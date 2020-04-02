@@ -14,17 +14,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
  */
 
-package treadle
-
-import java.io.{ByteArrayOutputStream, PrintStream}
+package treadle.wireusage
 
 import firrtl.options.TargetDirAnnotation
 import firrtl.stage.{FirrtlSourceAnnotation, OutputFileAnnotation}
-import logger.{LazyLogging, LogLevel, Logger}
+import logger.LazyLogging
 import org.scalatest.{FreeSpec, Matchers}
+import treadle.{TreadleTester, WriteVcdAnnotation}
 
-class InternalPrints extends FreeSpec with Matchers with LazyLogging
-{
+class AndFeedback extends FreeSpec with Matchers with LazyLogging {
 
   private val unclockedInput = """
       |circuit AndNoFeedback:
