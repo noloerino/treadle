@@ -61,7 +61,7 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
   private var currentCycle: Cycle = 0
 
   private type CycleMap = mutable.Map[Symbol.ID, SrcMap] // keyed on SymbolID of sink wire
-  private def newCycleMap: CycleMap = mutable.Map().withDefault(_ => mutable.BitSet())
+  private def newCycleMap: CycleMap = mutable.Map()
   // contains src symbol IDs; since registers aren't processed here the dependency is always on the same cycle
   private type SrcMap = mutable.BitSet
   val mapsPerCycle = mutable.ArrayBuffer[CycleMap](newCycleMap)
@@ -95,7 +95,7 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
 
   private def addAntiDependency(sink: Symbol, src: Symbol): Unit = {
     unusedCount += 1
-    val srcMap: SrcMap = currentMap(sink.uniqueId)
+    val srcMap: SrcMap = currentMap.getOrElseUpdate(sink.uniqueId, mutable.BitSet())
     srcMap.add(src.uniqueId)
   }
 
@@ -121,12 +121,12 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
               addAntiDependency(symbol, args(i))
               i += 1
             }
+            val usedArg = args(i)
             i += 1
             while (i < argc) {
               addAntiDependency(symbol, args(i))
               i += 1
             }
-            val usedArg = args.reverse(conditionVal)
             assert(getSymbolVal(usedArg) == symbolVal, "Selected mux argument and output must have same value")
           case PrimOperation(opcode, args) =>
             opcode match {

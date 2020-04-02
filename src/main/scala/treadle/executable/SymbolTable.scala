@@ -341,9 +341,11 @@ object SymbolTable extends LazyLogging {
             val trueRefs = expressionToReferences(trueExpression)
             val falseRefs = expressionToReferences(falseExpression)
             if (!(conditionRefs.size == 1 && trueRefs.size == 1 && falseRefs.size == 1)) {
-              throw new Exception(s"expressionToOpType: Usage graph cannot handle mux with more than one symbol in some argument: $expression")
+              StaticDependencyBundle(conditionRefs ++ trueRefs ++ falseRefs)
+//              throw new Exception(s"expressionToOpType: Usage graph cannot handle mux with more than one symbol in some argument: $expression")
+            } else {
+              MuxOperation(conditionRefs.head, List(trueRefs.head, falseRefs.head))
             }
-            MuxOperation(conditionRefs.head, List(trueRefs.head, falseRefs.head))
           case _: WRef | _: WSubField | _: WSubIndex =>
             // For direct assignments/indices, consider it a direct dependency
             ReferenceOperation(nameToSymbol(expand(expression.serialize)))
@@ -352,7 +354,7 @@ object SymbolTable extends LazyLogging {
               case (expr) => {
                 val exprRefs = expressionToReferences(expr)
                 if (exprRefs.size > 1) { // < 1 occurs when adding a literal as an argument
-                  throw new Exception(s"expressionToOpType: Usage graph cannot handle primitive op with more than one symbol argument: $expr")
+                  throw new Exception(s"expressionToOpType: Usage graph cannot handle primitive op with more than one symbol in some argument: $expr")
                 }
                 exprRefs.headOption
               }
@@ -366,12 +368,7 @@ object SymbolTable extends LazyLogging {
       }
 
       def addOperationDependency(sensitiveSymbol: Symbol, expr: Expression): Unit = {
-        try {
-          operationGraph(sensitiveSymbol) = expressionToOpType(expr)
-          // TODO a bandaid
-        } catch {
-          case _: Exception =>
-        }
+        operationGraph(sensitiveSymbol) = expressionToOpType(expr)
       }
 
       def getClockSymbol(expression: Expression): Option[Symbol] = {

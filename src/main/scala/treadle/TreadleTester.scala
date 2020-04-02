@@ -461,7 +461,7 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
       val symbolTable = usageReporter.symbolTable
       // Register case
       if (symbolTable.contains(s"${symbol.name}/in")) {
-        return Set((symbolTable(s"${symbol.name}/in"), cycle - 1))
+        return if (cycle > 0) Set((symbolTable(s"${symbol.name}/in"), cycle - 1)) else Set()
       }
       // General case
       val antiSrcs: mutable.BitSet = usageReporter.mapsPerCycle(cycle).getOrElse(symbol.uniqueId, mutable.BitSet())

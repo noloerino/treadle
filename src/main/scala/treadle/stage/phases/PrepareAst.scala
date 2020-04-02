@@ -74,7 +74,8 @@ class TreadleLowFirrtlOptimization extends SeqTransform {
     passes.SplitExpressions,
     new firrtl.transforms.CombineCats,
     passes.CommonSubexpressionElimination,
-    new firrtl.transforms.DeadCodeElimination
+    new firrtl.transforms.DeadCodeElimination,
+    passes.SplitExpressions
   )
 }
 
@@ -119,6 +120,20 @@ class HighToLow extends Transform {
   }
 }
 
+class LowToSsa extends Transform {
+  override def inputForm: CircuitForm = LowForm
+
+  override def outputForm: CircuitForm = LowForm
+
+  override protected def execute(state: CircuitState): CircuitState = {
+    if (state.form == inputForm) {
+      state
+    } else {
+      state
+    }
+  }
+}
+
 /** Prepare the AST from low FIRRTL.
   *
   */
@@ -137,7 +152,7 @@ object PrepareAst extends TreadlePhase {
       new TreadleLowFirrtlOptimization,
       new BlackBoxSourceHelper,
       new FixupOps,
-      AugmentPrintf
+      AugmentPrintf,
     )
   }
 }
