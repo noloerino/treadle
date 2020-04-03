@@ -22,6 +22,8 @@ import org.scalatest.{FreeSpec, Matchers}
 import treadle.executable.ClockInfo
 import treadle.{ClockInfoAnnotation, TreadleTester, WriteVcdAnnotation}
 
+import scala.util.Random
+
 abstract case class ALUCode(id: Int)
 
 object ALUCode extends Enumeration {
@@ -64,16 +66,24 @@ class RVMiniALU extends FreeSpec with Matchers {
         OutputFileAnnotation("rv_mini_alu.vcd")
       )
     )
-    for (i <- 0.until(ALUCode.CpB.id + 1)) {
-      val a = 3
-      val b = 0
-      tester.poke("io_A", a)
-      tester.poke("io_B", b)
-      tester.poke("io_alu_op", i)
-      val aluCode = ALUCode(i)
-      val expected = ALUCode.compute(aluCode, a, b)
-      tester.expect("io_out",  expected, s"for ALU computation $aluCode($a, $b)")
-      tester.step()
+    val rng = new Random(0)
+    val maxInt = 2048
+    val cycleCount = 10000
+    (0 until cycleCount) foreach { _ =>
+      for (i <- 0.until(ALUCode.CpB.id + 1)) {
+        val a = rng.nextInt(2 * maxInt)
+        val b = 0
+        // TODO figure out why ALU uses UInts
+//        val b = rng.nextInt(2 * maxInt) - maxInt
+
+        tester.poke("io_A", a)
+        tester.poke("io_B", b)
+        tester.poke("io_alu_op", i)
+        val aluCode = ALUCode(i)
+        val expected = ALUCode.compute(aluCode, a, b)
+        tester.expect("io_out", expected, s"for ALU computation $aluCode($a, $b)")
+        tester.step()
+      }
     }
     tester.report()
     tester.finishAndFindDependentsOf("io_out", ALUCode.CpA.id)

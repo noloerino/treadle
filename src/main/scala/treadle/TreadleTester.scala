@@ -332,6 +332,7 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
     */
   def step(n: Int = 1): Unit = {
     if (engine.verbose) println(s"In step at ${wallTime.currentTime}")
+    assert(n == 1, "Usage reporter requires step to be in increments of 1")
     usageReporter.updateCycleMap()
     clockStepper.run(n)
   }

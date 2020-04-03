@@ -39,7 +39,10 @@ class RVMiniTile extends FreeSpec with Matchers {
       )
     )
 
-    tester.step(7000) // Should run in ~16 seconds
+    // should run in around 16 seconds
+    val cycleCount = 4000
+    (0 until cycleCount) foreach { _ => tester.step() }
     tester.report()
+//    tester.finishAndFindDependentsOf("core.dpath.csr.io_out", cycleCount / 2)
   }
 }

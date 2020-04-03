@@ -39,7 +39,8 @@ class RVMiniDatapath extends FreeSpec with Matchers {
       )
     )
 
-    tester.step(20000) // should run in ~16 seconds, enough to attach async-profiler
+    val cycleCount = 15000
+    (0 until cycleCount) foreach { _ => tester.step() }
     tester.report()
   }
 }
