@@ -457,6 +457,7 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
 
   // Traverse the usage graph
   def finishAndFindDependentsOf(symbolName: String, cycle: Int): Boolean = {
+    val startTime = System.nanoTime()
     // Perform mark and sweep
     def getSrcs(symbol: Symbol, cycle: Int): Set[(Symbol, Int)] = {
       val symbolTable = usageReporter.symbolTable
@@ -486,7 +487,9 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
         case _ =>
       }
     }
+    val endTime = System.nanoTime()
 
+    println(s"*** Mark and sweep took ${(endTime - startTime).toDouble / 1e9} s (found ${marked.size} wires)")
     println(s"*** At finish, examined symbol $symbolName @ $cycle; found dependencies on:")
     marked.toList.filterNot(_._1.name.endsWith("/in"))
       .sortWith((w1, w2) => if (w1._2 == w2._2) w1._1.name > w2._1.name else w1._2 > w2._2)
