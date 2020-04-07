@@ -83,6 +83,25 @@ class AndFeedback extends FreeSpec with Matchers with LazyLogging {
       println(tester.usageReporter.reportUsedFraction)
       tester.finishAndFindDependentsOf("q", 5)
 
+      // Expected result:
+      /*
+      """
+        |*** At finish, examined symbol q @ 5; found dependencies on:
+        |	sel @ 5
+        |	m @ 5
+        |	sel @ 4
+        |	q @ 4
+        |	m @ 4
+        |	a @ 4
+        |	sel @ 3
+        |	q @ 3
+        |	m @ 3
+        |	a @ 3
+        |	sel @ 2
+        |	q @ 2
+        |	a @ 2
+        |""".stripMargin
+       */
     }
   }
 }

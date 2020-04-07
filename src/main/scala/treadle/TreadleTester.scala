@@ -466,11 +466,16 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
         return if (cycle > 0) Set((symbolTable(s"${symbol.name}/in"), cycle - 1)) else Set()
       }
       // General case
-      val antiSrcs: mutable.BitSet = usageReporter.mapsPerCycle(cycle).getOrElse(symbol.uniqueId, mutable.BitSet())
       val allPossibleSrcs = symbolTable.operationGraph.get(symbol) match {
         case Some(sym) => sym.allSrcs
         case _ => return Set()
       }
+      // Figure out which wires have antidependencies on the specified cycle
+      val antiSrcs: Set[Symbol.ID] = usageReporter.sinkMap(symbol.uniqueId)
+        .zipWithIndex
+        .filter { case (antiDepCycles: mutable.BitSet, _: Symbol.ID) => antiDepCycles.contains(cycle) }
+        .map { _._2 }
+        .toSet
       allPossibleSrcs.filterNot(s => antiSrcs.contains(s.uniqueId)).map { (_, cycle) }
     }
     val rootSet: mutable.Set[(Symbol, Int)] = mutable.Set()

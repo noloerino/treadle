@@ -60,12 +60,15 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
   private type Cycle = Int
   private var currentCycle: Cycle = 0
 
-  private type CycleMap = mutable.Map[Symbol.ID, SrcMap] // keyed on SymbolID of sink wire
-  private def newCycleMap: CycleMap = mutable.Map()
-  // contains src symbol IDs; since registers aren't processed here the dependency is always on the same cycle
-  private type SrcMap = mutable.BitSet
-  val mapsPerCycle = mutable.ArrayBuffer[CycleMap](newCycleMap)
-  var currentMap: CycleMap = mapsPerCycle(0)
+  // Maps source wires to bitset of cycles for which it is NOT a source (since we use antidependencies)
+  // Note that since registers aren't handled here, all dependencies occur within the same cycle
+  // Effectively Map[Symbol.ID, mutable.BitSet]
+  private type SrcMap = Array[mutable.BitSet]
+  // Map sink wires to all possible sources
+  // Effectively Map[Symbol.ID, SrcMap]
+  // Assume that generated symbol IDs begin from 0
+  val symIdRange = 0 to symbolTable.symbols.map { _.uniqueId }.max
+  val sinkMap: Array[SrcMap] = symIdRange.map { _ => symIdRange.map { _ => mutable.BitSet() }.toArray }.toArray
 
   // Usually, it is reasonable to assume that more wires are used than not; this checks that
   var unusedCount = 0
@@ -80,7 +83,7 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
     if (totalVisitedCount > 0) ignoredSymbolCount.toDouble / totalVisitedCount.toDouble else 0.0
   def reportUsedFraction: String =
     s"used $usedCount out of total $totalWireCount ($usedFraction)" +
-      (if (ignoredSymbolCount > 0) s"; ignored $ignoredSymbolCount out of $totalVisitedCount ($ignoredFraction)" else "")
+      (if (ignoredSymbolCount > 0) s"; ignored $ignoredSymbolCount of $totalVisitedCount ($ignoredFraction)" else "")
 
   private def getSymbolVal(symbol: Symbol): Int = {
     dataStore(symbol).intValue()
@@ -88,15 +91,13 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
 
   def updateCycleMap(): Unit = {
     // Called by tester when cycle is stepped
-    mapsPerCycle += currentMap
     currentCycle += 1
-    currentMap = newCycleMap
   }
 
   private def addAntiDependency(sink: Symbol, src: Symbol): Unit = {
     unusedCount += 1
-    val srcMap: SrcMap = currentMap.getOrElseUpdate(sink.uniqueId, mutable.BitSet())
-    srcMap.add(src.uniqueId)
+    val cycleSet = sinkMap(sink.uniqueId)(src.uniqueId)
+    cycleSet.add(currentCycle)
   }
 
   // scalastyle:off cyclomatic.complexity method.length
