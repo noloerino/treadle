@@ -121,16 +121,19 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
           case PrimOperation(opcode, args) =>
             opcode match {
               case And =>
+                // AND can be used in more than just the 1b case, e.g. for bit masks
                 if (args.size < 2) return
                 assert(args.size == 2, s"And expected args list of size 2, got $args")
                 val inputA = args.head
                 val inputB = args.last
                 (getSymbolVal(inputA), getSymbolVal(inputB)) match {
-                  case (0, 1) => addAntiDependency(symbol, inputB)
-                  case (1, 0) => addAntiDependency(symbol, inputA)
-                  case (0, 0) | (1, 1) | _ =>
+                  case (0, 0) =>
+                  case (0, _) => addAntiDependency(symbol, inputB)
+                  case (_, 0) => addAntiDependency(symbol, inputA)
+                  case _ =>
                 }
               case Or =>
+                // OR only matters in the 1b case
                 if (args.size < 2) return
                 assert(args.size == 2, s"Or expected args list of size 2, got $args")
                 val inputA = args.head
