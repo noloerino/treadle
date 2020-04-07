@@ -74,7 +74,8 @@ class TreadleLowFirrtlOptimization extends SeqTransform {
     passes.SplitExpressions,
     new firrtl.transforms.CombineCats,
     passes.CommonSubexpressionElimination,
-    new firrtl.transforms.DeadCodeElimination
+    new firrtl.transforms.DeadCodeElimination,
+    passes.SplitExpressions
   )
 }
 
