@@ -437,9 +437,11 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
           }
       }
     }
+    val runtime = Runtime.getRuntime
     s"test ${engine.ast.main} " +
       s"$status $expectationsMet tests passed " +
       f"in $cycleCount cycles in $elapsedSeconds%.6f seconds ${cycleCount / elapsedSeconds}%.2f Hz" +
+      s"; current memory footprint ${(runtime.totalMemory() - runtime.freeMemory())/1000} KB" +
       s"; ${usageReporter.reportUsedFraction}"
   }
 

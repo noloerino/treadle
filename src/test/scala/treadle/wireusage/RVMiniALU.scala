@@ -67,15 +67,12 @@ class RVMiniALU extends FreeSpec with Matchers {
       )
     )
     val rng = new Random(0)
-    val maxInt = 2048
     // on commit 87b8d7 ~30k maxes out memory in default CLI sbt config (with VCD plugin and no usage reporter)
     val cycleCount = 30000
     (0 until cycleCount) foreach { _ =>
       for (i <- 0.until(ALUCode.CpB.id + 1)) {
-        val a = rng.nextInt(2 * maxInt)
+        val a = rng.nextInt(2048)
         val b = 0
-        // TODO figure out why ALU uses UInts
-//        val b = rng.nextInt(2 * maxInt) - maxInt
 
         tester.poke("io_A", a)
         tester.poke("io_B", b)
