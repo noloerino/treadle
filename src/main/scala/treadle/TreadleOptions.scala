@@ -27,6 +27,11 @@ sealed trait TreadleOption extends Unserializable { this: Annotation =>
 }
 
 /**
+  * Tells treadle to record statistics about which wires are used.
+  */
+case object ReportUsageAnnotation extends NoTargetAnnotation with TreadleOption
+
+/**
   * Tells treadle to write a vcd file during simulation
   */
 case object WriteVcdAnnotation extends NoTargetAnnotation with TreadleOption with HasShellOptions {

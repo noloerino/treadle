@@ -20,7 +20,7 @@ import firrtl.FileUtils
 import firrtl.options.TargetDirAnnotation
 import firrtl.stage.{FirrtlSourceAnnotation, OutputFileAnnotation}
 import org.scalatest.{FreeSpec, Matchers}
-import treadle.{ClockInfoAnnotation, TreadleTester, WriteVcdAnnotation}
+import treadle.{ClockInfoAnnotation, ReportUsageAnnotation, TreadleTester, WriteVcdAnnotation}
 import treadle.executable.ClockInfo
 
 import scala.util.Random
@@ -31,6 +31,7 @@ class RVMiniDatapath extends FreeSpec with Matchers {
   private def getTester(out_path: String) = TreadleTester(
     Seq(
       FirrtlSourceAnnotation(file),
+      ReportUsageAnnotation,
       ClockInfoAnnotation(
         Seq(ClockInfo("clock", period = 10, initialOffset = 1))
       ),

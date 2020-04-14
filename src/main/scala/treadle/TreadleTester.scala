@@ -76,6 +76,7 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
   private val callResetAtStartUp = annotationSeq.exists { case CallResetAtStartupAnnotation => true; case _ => false }
   val topName: String = annotationSeq.collectFirst { case OutputFileAnnotation(ofn) => ofn }.getOrElse(engine.ast.main)
   private val verbose = annotationSeq.exists { case VerboseAnnotation => true; case _ => false }
+  private val reportUsage = annotationSeq.contains(ReportUsageAnnotation)
   private val stageOptions = view[StageOptions](annotationSeq)
 
   def setVerbose(value: Boolean = true): Unit = {
@@ -440,9 +441,11 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
     val runtime = Runtime.getRuntime
     s"test ${engine.ast.main} " +
       s"$status $expectationsMet tests passed " +
-      f"in $cycleCount cycles in $elapsedSeconds%.6f seconds ${cycleCount / elapsedSeconds}%.2f Hz" +
-      s"; current memory footprint ${(runtime.totalMemory() - runtime.freeMemory())/1000} KB" +
-      s"; ${usageReporter.reportUsedFraction}"
+      (if (reportUsage) {
+        f"in $cycleCount cycles in $elapsedSeconds%.6f seconds ${cycleCount / elapsedSeconds}%.2f Hz" +
+        s"; current memory footprint ${(runtime.totalMemory() - runtime.freeMemory())/1000} KB" +
+        s"; ${usageReporter.reportUsedFraction}"
+      } else "")
   }
 
   /**
@@ -455,23 +458,39 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
 
   // Register usage plugin here so it has access to the clock stepper
   val usageReporter = new ReportUsage(engine)
-  engine.dataStore.addPlugin("show-usage", usageReporter, enable = true)
+  engine.dataStore.addPlugin("show-usage", usageReporter, enable = reportUsage)
 
-  // Traverse the usage graph
+  /**
+    * Given a symbol and the cycle on which it occurs, this method reports all wires at given cycles that the
+    * symbol depended on.
+    *
+    * For best results, the ReportUsageAnnotation should be enabled, as it dynamically prunes the dependency graph at
+    * runtime. If it is not enabled, then the expression graph generated at compile time is used instead.
+    *
+    * @param symbolName the name of the symbol to examine
+    * @param cycle the cycle on which to examine the symbol
+    * @return true if the test finished ok
+    */
   def finishAndFindDependentsOf(symbolName: String, cycle: Int): Boolean = {
     val startTime = System.nanoTime()
     // Perform mark and sweep
     def getSrcs(symbol: Symbol, cycle: Int): Set[(Symbol, Int)] = {
       val symbolTable = usageReporter.symbolTable
-      // Register case
+      // 1. Register case
       if (symbolTable.contains(s"${symbol.name}/in")) {
         return if (cycle > 0) Set((symbolTable(s"${symbol.name}/in"), cycle - 1)) else Set()
       }
-      // General case
+      // 2. General case
       val allPossibleSrcs = symbolTable.operationGraph.get(symbol) match {
         case Some(sym) => sym.allSrcs
         case _ => return Set()
       }
+      // 2.1 Usage reporter is disabled
+      // Just use static dependencies
+      if (!reportUsage) {
+        return allPossibleSrcs.map { (_, cycle) }
+      }
+      // 2.2 Usage reporter is enabled
       // Figure out which wires have antidependencies on the specified cycle
       val antiSrcs: Set[Symbol.ID] = usageReporter.sinkMap(symbol.uniqueId)
         .zipWithIndex

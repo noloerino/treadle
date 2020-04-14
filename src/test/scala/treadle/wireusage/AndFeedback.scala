@@ -20,7 +20,7 @@ import firrtl.options.TargetDirAnnotation
 import firrtl.stage.{FirrtlSourceAnnotation, OutputFileAnnotation}
 import logger.LazyLogging
 import org.scalatest.{FreeSpec, Matchers}
-import treadle.{TreadleTester, WriteVcdAnnotation}
+import treadle.{ReportUsageAnnotation, TreadleTester, WriteVcdAnnotation}
 
 class AndFeedback extends FreeSpec with Matchers with LazyLogging {
 
@@ -67,12 +67,12 @@ class AndFeedback extends FreeSpec with Matchers with LazyLogging {
     )
     Console.withOut(Console.out) {
       val tester = TreadleTester(
-        Seq(FirrtlSourceAnnotation(input),
-//          CallResetAtStartupAnnotation,
+        Seq(
+          FirrtlSourceAnnotation(input),
+          ReportUsageAnnotation,
           WriteVcdAnnotation,
           TargetDirAnnotation("usage_vcds"),
           OutputFileAnnotation("internal_prints.vcd")
-//          VerboseAnnotation
         ))
       println(s"${Console.RESET}${Console.GREEN}STARTING TEST")
       for (inputMap <- inputs) {
