@@ -333,8 +333,10 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
     */
   def step(n: Int = 1): Unit = {
     if (engine.verbose) println(s"In step at ${wallTime.currentTime}")
-    assert(n == 1, "Usage reporter requires step to be in increments of 1")
-    usageReporter.updateCycleMap()
+    if (reportUsage) {
+      assert(n == 1, "Usage reporter requires step to be in increments of 1")
+      usageReporter.updateCycleMap()
+    }
     clockStepper.run(n)
   }
 
@@ -469,9 +471,10 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
     *
     * @param symbolName the name of the symbol to examine
     * @param cycle the cycle on which to examine the symbol
-    * @return true if the test finished ok
+    * @return the number of dependencies found, including the initial root set
     */
-  def finishAndFindDependentsOf(symbolName: String, cycle: Int): Boolean = {
+  // scalastyle:off method.length
+  def findDependentsOf(symbolName: String, cycle: Int): Int = {
     val startTime = System.nanoTime()
     // Perform mark and sweep
     def getSrcs(symbol: Symbol, cycle: Int): Set[(Symbol, Int)] = {
@@ -515,12 +518,14 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
     }
     val endTime = System.nanoTime()
 
-    println(s"*** Mark and sweep took ${(endTime - startTime).toDouble / 1e9} s (found ${marked.size} wires)")
-    println(s"*** At finish, examined symbol $symbolName @ $cycle; found dependencies on:")
-    marked.toList.filterNot(_._1.name.endsWith("/in"))
+//    println(s"*** At finish, examined symbol $symbolName @ $cycle; found dependencies on:")
+    val sortedPairs = marked.toList.filterNot(_._1.name.endsWith("/in"))
       .sortWith((w1, w2) => if (w1._2 == w2._2) w1._1.name > w2._1.name else w1._2 > w2._2)
-      .foreach { case (symbol: Symbol, cycle: Int) => println(s"\t${symbol.name} @ $cycle")}
-    finish
+//    println(s"*** Mark and sweep took ${(endTime - startTime).toDouble / 1e9} s (found ${sortedPairs.size} wires)")
+    println(s"*** Mark and sweep for $symbolName @ $cycle took ${(endTime - startTime).toDouble / 1e9} s" +
+      s" (found ${sortedPairs.size} wires)")
+//    sortedPairs.foreach { case (symbol: Symbol, cycle: Int) => println(s"\t${symbol.name} @ $cycle")}
+    sortedPairs.size
   }
 
   def finish: Boolean = {

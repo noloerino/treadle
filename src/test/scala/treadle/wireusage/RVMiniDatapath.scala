@@ -17,39 +17,25 @@ limitations under the License.
 package treadle.wireusage
 
 import firrtl.FileUtils
-import firrtl.options.TargetDirAnnotation
-import firrtl.stage.{FirrtlSourceAnnotation, OutputFileAnnotation}
 import org.scalatest.{FreeSpec, Matchers}
-import treadle.{ClockInfoAnnotation, ReportUsageAnnotation, TreadleTester, WriteVcdAnnotation}
-import treadle.executable.ClockInfo
+import treadle.{TreadleTester}
 
 import scala.util.Random
 
 class RVMiniDatapath extends FreeSpec with Matchers {
 
-  private val file = FileUtils.getTextResource("/Datapath.fir")
-  private def getTester(out_path: String) = TreadleTester(
-    Seq(
-      FirrtlSourceAnnotation(file),
-      ReportUsageAnnotation,
-      ClockInfoAnnotation(
-        Seq(ClockInfo("clock", period = 10, initialOffset = 1))
-      ),
-      WriteVcdAnnotation,
-      TargetDirAnnotation("usage_vcds"),
-      OutputFileAnnotation(s"$out_path.vcd")
-    )
-  )
+  private val firrtlSrc  = FileUtils.getTextResource("/Datapath.fir")
 
   "datapath should run empty" in {
-    val tester = getTester("rvmini_dpath_empty")
-    val cycleCount = 15000
-    (0 until cycleCount) foreach { _ => tester.step() }
-    tester.report()
+    val cycleCount = 1000
+    WireUsageTest.testWithInterestingWires(firrtlSrc, cycleCount, {
+      tester: TreadleTester =>
+        (0 until cycleCount) foreach { _ => tester.step() }
+        tester.report()
+    })
   }
 
   "datapath should run some instructions" in {
-    val tester = getTester("rvmini_dpath_insts")
     // Ripped from reading the inputs of RiscVMini's TestUtils.insts
     val insts =
       """
@@ -104,18 +90,21 @@ class RVMiniDatapath extends FreeSpec with Matchers {
         |19
         |908752575
         |""".stripMargin.trim.split("\n").map { _.toLong }
-    val iterCount = 300 // amounts to 15k cycles
+    val iterCount = 20 // insts is of size 50
     val rng = Random
-    tester.poke("reset", 1)
-    (0 until iterCount) foreach { _ =>
-      insts foreach { inst =>
-        tester.poke("io_icache_resp_bits_data", inst)
-        tester.poke("io_icache_resp_valid", 1)
-        tester.poke("io_dcache_resp_bits_data", rng.nextInt())
-        tester.poke("io_dcache_resp_valid", 1)
-        tester.step()
-      }
-    }
-    tester.report()
+    WireUsageTest.testWithInterestingWires(firrtlSrc, iterCount * insts.length, {
+      tester: TreadleTester =>
+        tester.poke("reset", 1)
+        (0 until iterCount) foreach { _ =>
+          insts foreach { inst =>
+            tester.poke("io_icache_resp_bits_data", inst)
+            tester.poke("io_icache_resp_valid", 1)
+            tester.poke("io_dcache_resp_bits_data", rng.nextInt())
+            tester.poke("io_dcache_resp_valid", 1)
+            tester.step()
+          }
+        }
+        tester.report()
+    })
   }
 }

@@ -65,43 +65,32 @@ class AndFeedback extends FreeSpec with Matchers with LazyLogging {
       Map("a" -> 1, "sel" -> 1),
       Map("a" -> 0, "sel" -> 1),
     )
-    Console.withOut(Console.out) {
-      val tester = TreadleTester(
-        Seq(
-          FirrtlSourceAnnotation(input),
-          ReportUsageAnnotation,
-          WriteVcdAnnotation,
-          TargetDirAnnotation("usage_vcds"),
-          OutputFileAnnotation("internal_prints.vcd")
-        ))
-      println(s"${Console.RESET}${Console.GREEN}STARTING TEST")
-      for (inputMap <- inputs) {
-        inputMap foreach {case (wire, value) => tester.poke(wire, value)}
-        tester.step()
-      }
-
-      println(tester.usageReporter.reportUsedFraction)
-      tester.finishAndFindDependentsOf("q", 5)
-
-      // Expected result:
-      /*
-      """
-        |*** At finish, examined symbol q @ 5; found dependencies on:
-        |	sel @ 5
-        |	m @ 5
-        |	sel @ 4
-        |	q @ 4
-        |	m @ 4
-        |	a @ 4
-        |	sel @ 3
-        |	q @ 3
-        |	m @ 3
-        |	a @ 3
-        |	sel @ 2
-        |	q @ 2
-        |	a @ 2
-        |""".stripMargin
-       */
-    }
+    WireUsageTest.testWithInterestingWires(input, 5, {
+      tester =>
+        for (inputMap <- inputs) {
+          inputMap foreach {case (wire, value) => tester.poke(wire, value)}
+          tester.step()
+        }
+        println(tester.usageReporter.reportUsedFraction)
+    })
+    // Expected result:
+    /*
+    """
+      |*** At finish, examined symbol q @ 5; found dependencies on:
+      |	sel @ 5
+      |	m @ 5
+      |	sel @ 4
+      |	q @ 4
+      |	m @ 4
+      |	a @ 4
+      |	sel @ 3
+      |	q @ 3
+      |	m @ 3
+      |	a @ 3
+      |	sel @ 2
+      |	q @ 2
+      |	a @ 2
+      |""".stripMargin
+     */
   }
 }

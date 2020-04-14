@@ -17,7 +17,6 @@ limitations under the License.
 package treadle.wireusage
 
 import firrtl.AnnotationSeq
-import firrtl.options.TargetDirAnnotation
 import firrtl.stage.{FirrtlSourceAnnotation, OutputFileAnnotation}
 import org.scalatest.{FlatSpec, Matchers}
 import treadle.{Big1, ReportUsageAnnotation, TreadleTester, WriteVcdAnnotation}
@@ -42,8 +41,7 @@ class GCDTesterUsage extends FlatSpec with Matchers {
 
   behavior.of("GCD")
 
-  def getTester(width: Int, annotations: AnnotationSeq): TreadleTester = {
-    val gcdFirrtl =
+  def getFirrtl(width: Int): String =
       s"""
          |circuit GCD :
          |  module GCD :
@@ -72,8 +70,6 @@ class GCDTesterUsage extends FlatSpec with Matchers {
          |    io_z <= x
          |    io_v <= T_21
     """.stripMargin
-    TreadleTester(Seq(FirrtlSourceAnnotation(gcdFirrtl)) ++ annotations)
-  }
 
   //scalastyle:off
   def sizableTest(tester: TreadleTester) {
@@ -156,39 +152,25 @@ class GCDTesterUsage extends FlatSpec with Matchers {
     println(tester.usageReporter.reportUsedFraction)
   }
 
-  def testWithPermutedAnnotations(testFn: TreadleTester => Unit, width: Int): Unit = {
-    val NoAnnotations: AnnotationSeq = Seq()
-    val ReportUsageOnly: AnnotationSeq = Seq(ReportUsageAnnotation)
-    val VcdOnly: AnnotationSeq = Seq(
-      WriteVcdAnnotation,
-      TargetDirAnnotation("usage_vcds"),
-      OutputFileAnnotation("gcd_many.vcd")
-    )
-    val AllAnnotations: AnnotationSeq = ReportUsageOnly ++ VcdOnly
-    Seq(NoAnnotations, ReportUsageOnly, VcdOnly, AllAnnotations).foreach {
-      a: AnnotationSeq =>
-        println(s"=== Testing with annotations: ${Console.GREEN}${
-          a.map {
-            _.serialize
-          }.mkString(", ")
-        }${Console.RESET}")
-      testFn(getTester(width, a))
-    }
-  }
+  val CYCLES = 1000
 
   it should "run with InterpretedTester at Int size 16" in {
-    testWithPermutedAnnotations(sizableTest, 16)
+    WireUsageTest.testWithPermutedAnnotations(getFirrtl(16), sizableTest)
+    WireUsageTest.testWithInterestingWires(getFirrtl(16), CYCLES, sizableTest)
   }
 
   it should "run with InterpretedTester at Int size 44" in {
-    testWithPermutedAnnotations(sizableTest, 44)
+    WireUsageTest.testWithPermutedAnnotations(getFirrtl(44), sizableTest)
+    WireUsageTest.testWithInterestingWires(getFirrtl(44), CYCLES, sizableTest)
   }
 
   it should "run with InterpretedTester at size 68" in {
-    testWithPermutedAnnotations(sizableTest, 68)
+    WireUsageTest.testWithPermutedAnnotations(getFirrtl(68), sizableTest)
+    WireUsageTest.testWithInterestingWires(getFirrtl(68), CYCLES, sizableTest)
   }
 
   it should "run a lot of values" in {
-    testWithPermutedAnnotations(manyValuesTest,24)
+    WireUsageTest.testWithPermutedAnnotations(getFirrtl(24), manyValuesTest)
+    WireUsageTest.testWithInterestingWires(getFirrtl(24), CYCLES, sizableTest)
   }
 }
