@@ -474,24 +474,37 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
     * @return the number of dependencies found, including the initial root set
     */
   // scalastyle:off method.length
-  def findDependentsOf(symbolName: String, cycle: Int): Int = {
+  def findDependentsOf(symbolName: String, cycle: Int, verbose: Boolean = false): Int = {
+    val symbolTable = engine.symbolTable
     val startTime = System.nanoTime()
+    val symIdRange = 0 to symbolTable.symbols.map { _.uniqueId }.max
     // Perform mark and sweep
-    def getSrcs(symbol: Symbol, cycle: Int): Set[(Symbol, Int)] = {
-      val symbolTable = usageReporter.symbolTable
+    def newCycleMap() = symIdRange.map { _ => mutable.BitSet() }.toArray
+    // As with the runtime maps, the index is a symbol ID and the value is a set of cycles
+    val rootSet: Array[mutable.BitSet] = newCycleMap()
+    rootSet(symbolTable(symbolName).uniqueId).add(cycle)
+    // Since all pushes will be on the same cycle, we examine bundles of wires together
+    val stack: mutable.ArrayStack[(Seq[Symbol.ID], Int)] = mutable.ArrayStack()
+    val marked: Array[mutable.BitSet] = newCycleMap()
+    rootSet.zipWithIndex.foreach { case (_, symId) => stack.push((Seq(symId), cycle)) }
+    // Pushes the sources of the given symbol on the given cycle onto the stack
+    def pushSrcs(symbolId: Symbol.ID, cycle: Int) {
+      val symbol = symbolTable.idToSymbol(symbolId)
       // 1. Register case
       if (symbolTable.contains(s"${symbol.name}/in")) {
-        return if (cycle > 0) Set((symbolTable(s"${symbol.name}/in"), cycle - 1)) else Set()
+        if (cycle > 0) {
+          stack.push((Seq(symbolTable(s"${symbol.name}/in").uniqueId), cycle - 1))
+        }
+        return
       }
       // 2. General case
-      val allPossibleSrcs = symbolTable.operationGraph.get(symbol) match {
-        case Some(sym) => sym.allSrcs
-        case _ => return Set()
+      val allPossibleSrcs = symbolTable.operationGraph.get(symbol.uniqueId) match {
+        case Some(sym) => sym.allSrcs.map { _.uniqueId }
+        case _ => return
       }
-      // 2.1 Usage reporter is disabled
-      // Just use static dependencies
+      // 2.1 Usage reporter is disabled (just use static dependencies)
       if (!reportUsage) {
-        return allPossibleSrcs.map { (_, cycle) }
+        stack.push((allPossibleSrcs.toSeq, cycle))
       }
       // 2.2 Usage reporter is enabled
       // Figure out which wires have antidependencies on the specified cycle
@@ -500,32 +513,40 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
         .filter { case (antiDepCycles: mutable.BitSet, _: Symbol.ID) => antiDepCycles.contains(cycle) }
         .map { _._2 }
         .toSet
-      allPossibleSrcs.filterNot(s => antiSrcs.contains(s.uniqueId)).map { (_, cycle) }
+      stack.push((allPossibleSrcs.diff(antiSrcs).toSeq, cycle))
     }
-    val rootSet: mutable.Set[(Symbol, Int)] = mutable.Set()
-    getSrcs(engine.symbolTable(symbolName), cycle).foreach(depPair => rootSet.add(depPair))
-    val stack: mutable.ArrayStack[(Symbol, Int)] = mutable.ArrayStack()
-    val marked: mutable.Set[(Symbol, Int)] = mutable.Set()
-    rootSet.foreach { stack.push }
+
     while (stack.nonEmpty) {
-      val (symbol, cycle) = stack.pop()
+      val (ids, cycle) = stack.pop()
       // Mark and add parents to stack
-      marked.add((symbol, cycle))
-      getSrcs(symbol, cycle).foreach {
-        case depPair if !marked.contains(depPair) => stack.push(depPair)
-        case _ =>
+      ids.foreach { symbolId =>
+        if (!marked(symbolId).contains(cycle)) {
+          marked(symbolId).add(cycle)
+          pushSrcs(symbolId, cycle)
+        }
       }
     }
     val endTime = System.nanoTime()
 
-//    println(s"*** At finish, examined symbol $symbolName @ $cycle; found dependencies on:")
-    val sortedPairs = marked.toList.filterNot(_._1.name.endsWith("/in"))
+    val sortedPairs = marked.zipWithIndex
+      // Expand to pairs of (symbol, cycle)
+      .flatMap { case (cycles, symId) =>
+        cycles.flatMap { cycle =>
+          val sym = symbolTable.idToSymbol(symId)
+          // Filter register inputs
+          if (sym.name.endsWith("/in")) List() else List((sym, cycle))
+        }
+      }
       .sortWith((w1, w2) => if (w1._2 == w2._2) w1._1.name > w2._1.name else w1._2 > w2._2)
-//    println(s"*** Mark and sweep took ${(endTime - startTime).toDouble / 1e9} s (found ${sortedPairs.size} wires)")
-    println(s"*** Mark and sweep for $symbolName @ $cycle took ${(endTime - startTime).toDouble / 1e9} s" +
-      s" (found ${sortedPairs.size} wires)")
-//    sortedPairs.foreach { case (symbol: Symbol, cycle: Int) => println(s"\t${symbol.name} @ $cycle")}
-    sortedPairs.size
+    if (verbose) {
+      println(s"*** Mark and sweep took ${(endTime - startTime).toDouble / 1e9} s (found ${sortedPairs.length} wires)")
+      println(s"*** At finish, examined symbol $symbolName @ $cycle; found dependencies on:")
+      sortedPairs.foreach { case (symbol: Symbol, cycle: Int) => println(s"\t${symbol.name} @ $cycle")}
+    } else {
+      println(s"*** Mark and sweep for $symbolName @ $cycle took ${(endTime - startTime).toDouble / 1e9} s" +
+        s" (found ${sortedPairs.length} wires)")
+    }
+    sortedPairs.length
   }
 
   def finish: Boolean = {

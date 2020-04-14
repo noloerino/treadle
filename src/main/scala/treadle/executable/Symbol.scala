@@ -109,7 +109,7 @@ case class Symbol(
 object Symbol {
 
   type ID = Int
-  private var counter: Int = 0
+  private var counter: Int = -1
 
   def genUId(): Int = {
     counter += 1

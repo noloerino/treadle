@@ -17,6 +17,7 @@ limitations under the License.
 package treadle.executable
 
 import firrtl.PrimOps.{And, Or}
+import treadle.executable.SymbolTable.OperationGraph
 
 import scala.collection.mutable
 
@@ -55,7 +56,7 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
 
   val dataStore: DataStore = executionEngine.dataStore
   val symbolTable: SymbolTable = executionEngine.symbolTable
-  val opGraph: mutable.Map[Symbol, OperationInfo] = symbolTable.operationGraph
+  val opGraph: OperationGraph = symbolTable.operationGraph
 
   private type Cycle = Int
   private var currentCycle: Cycle = 0
@@ -109,7 +110,7 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
       return
     }
     val symbolVal = getSymbolVal(symbol)
-    opGraph.get(symbol).foreach(
+    opGraph.get(symbol.uniqueId).foreach(
       opInfo => {
         totalWireCount += opInfo.totalSources
         opInfo match {

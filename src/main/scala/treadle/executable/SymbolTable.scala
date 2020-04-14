@@ -21,6 +21,7 @@ import firrtl.graph.DiGraph
 import firrtl.ir._
 import firrtl.PrimOps.{And, Or}
 import logger.LazyLogging
+import treadle.executable.SymbolTable.OperationGraph
 import treadle.utils.FindModule
 import treadle.{ScalaBlackBox, ScalaBlackBoxFactory}
 
@@ -66,17 +67,18 @@ case class StaticDependencyBundle(srcs: Set[Symbol]) extends OperationInfo {
 
 class SymbolTable(val nameToSymbol: mutable.HashMap[String, Symbol]) {
 
-  val operationGraph: mutable.HashMap[Symbol, OperationInfo] = new mutable.HashMap
+  val operationGraph: OperationGraph = new mutable.HashMap
+  var idToSymbol: Array[Symbol] = Array()
 
   // Compresses the operationGraph in place by most connections into StaticDependencyBundle when possible.
   // Does a single pass, traversing all connected components of the graph.
   private def compressOperationGraph(): Unit = {
-    val visited: mutable.Set[Symbol] = mutable.Set()
+    val visited: mutable.Set[Symbol.ID] = mutable.Set()
     operationGraph.keysIterator.foreach { compressOperation(_, visited) }
   }
 
   // Perform compression on given symbol; visited set prevents combinatorial loops
-  private def compressOperation(symbol: Symbol, visited: mutable.Set[Symbol]): Unit = {
+  private def compressOperation(symbol: Symbol.ID, visited: mutable.Set[Symbol.ID]): Unit = {
     if (!operationGraph.contains(symbol) || visited.contains(symbol)) {
       return
     }
@@ -86,9 +88,10 @@ class SymbolTable(val nameToSymbol: mutable.HashMap[String, Symbol]) {
       return
     }
     val srcs = opInfo.allSrcs
-    srcs.foreach { compressOperation(_, visited) }
+    srcs.foreach { sym => compressOperation(sym.uniqueId, visited) }
     // After performing compression on all sources, we can just visit the immediate parents
-    val compressedSrcs: Set[Symbol] = srcs.flatMap(sym => if (operationGraph.contains(sym)) operationGraph(sym).allSrcs + sym else Set(sym))
+    val compressedSrcs: Set[Symbol] = srcs.flatMap(sym
+      => if (operationGraph.contains(sym.uniqueId)) operationGraph(sym.uniqueId).allSrcs + sym else Set(sym))
     operationGraph(symbol) = StaticDependencyBundle(compressedSrcs)
   }
 
@@ -217,6 +220,8 @@ class SymbolTable(val nameToSymbol: mutable.HashMap[String, Symbol]) {
 
 object SymbolTable extends LazyLogging {
 
+  type OperationGraph = mutable.HashMap[Symbol.ID, OperationInfo]
+
   val RegisterInputSuffix = "/in"
   val LastValueSuffix = "/last"
   val PrevSuffix = "/prev"
@@ -271,7 +276,7 @@ object SymbolTable extends LazyLogging {
 
     val sensitivityGraphBuilder: SensitivityGraphBuilder = new SensitivityGraphBuilder
 
-    val operationGraph = new mutable.HashMap[Symbol, OperationInfo]
+    val operationGraph = new OperationGraph
     val instanceNames = new mutable.HashSet[String]
     val registerNames = new mutable.HashSet[String]
     val inputPorts = new mutable.HashSet[String]
@@ -367,7 +372,7 @@ object SymbolTable extends LazyLogging {
       }
 
       def addOperationDependency(sensitiveSymbol: Symbol, expr: Expression): Unit = {
-        operationGraph(sensitiveSymbol) = expressionToOpType(expr)
+        operationGraph(sensitiveSymbol.uniqueId) = expressionToOpType(expr)
       }
 
       def getClockSymbol(expression: Expression): Option[Symbol] = {
@@ -681,11 +686,17 @@ object SymbolTable extends LazyLogging {
 
     val symbolTable = SymbolTable(nameToSymbol)
     symbolTable.operationGraph ++= operationGraph
+    val DummySymbol = Symbol("DUMMY",
+      IntSize, DataType(firrtl.ir.SIntType(firrtl.ir.IntWidth(1))), UnknownKind, 1, 1, firrtl.ir.UnknownType, NoInfo)
+    // Some indices may be skipped
+    val symCount = symbolTable.symbols.map { _.uniqueId }.max + 1
+    symbolTable.idToSymbol = Array.fill(symCount)(DummySymbol)
+    symbolTable.symbols.foreach { s => symbolTable.idToSymbol(s.uniqueId) = s}
     symbolTable.compressOperationGraph()
     def printOperationGraph() = {
       println("===Begin operation graph===")
-      for ((symbol, opInfo) <- symbolTable.operationGraph) {
-        print(s"\t${symbol.name}")
+      for ((symbolId, opInfo) <- symbolTable.operationGraph) {
+        print(s"\t${symbolTable.idToSymbol(symbolId)}")
         opInfo match {
           case MuxOperation(condition, trueSym, falseSym) =>
             println(s" <- mux(${condition.name}, ${trueSym.name}, ${falseSym.name})")

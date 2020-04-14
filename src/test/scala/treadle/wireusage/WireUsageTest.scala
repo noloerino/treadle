@@ -47,9 +47,9 @@ object WireUsageTest {
     * The tester is only run once.
     * The different root sets are each singleton sets of "interesting" wires: see [getInterestingWireNames].
     *
-    * @param testFn the test function
     * @param firrtlSrc the string containing the firrtl source code
     * @param cycles the number of cycles for which to simulate
+    * @param testFn the test function
     */
   def testWithInterestingWires(firrtlSrc: String, cycles: Int, testFn: TreadleTester => Unit) {
     println("=== Commencing test with permuted root sets ===") // scalastyle:ignore
