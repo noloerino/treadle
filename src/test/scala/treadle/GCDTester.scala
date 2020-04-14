@@ -16,8 +16,7 @@ limitations under the License.
 
 package treadle
 
-import firrtl.options.TargetDirAnnotation
-import firrtl.stage.{FirrtlSourceAnnotation, OutputFileAnnotation}
+import firrtl.stage.FirrtlSourceAnnotation
 import org.scalatest.{FlatSpec, Matchers}
 
 // scalastyle:off magic.number
@@ -78,14 +77,7 @@ class GCDTester extends FlatSpec with Matchers {
         y <- 10 to 100
       } yield (x, y, computeGcd(x, y)._1)
 
-    val tester = TreadleTester(
-      Seq(
-        FirrtlSourceAnnotation(gcdFirrtl),
-        WriteVcdAnnotation,
-        TargetDirAnnotation("usage_vcds"),
-        OutputFileAnnotation("gcd_many.vcd")
-      )
-    )
+    val tester = TreadleTester(Seq(FirrtlSourceAnnotation(gcdFirrtl)))
 
     val startTime = System.nanoTime()
     tester.poke("clock", 1)
@@ -158,12 +150,7 @@ class GCDTester extends FlatSpec with Matchers {
         y <- 1 to 100
       } yield (x, y, computeGcd(x, y)._1)
 
-    val tester = TreadleTester(Seq(
-      FirrtlSourceAnnotation(gcdFirrtl),
-      WriteVcdAnnotation,
-      TargetDirAnnotation("usage_vcds"),
-      OutputFileAnnotation("gcd_many.vcd")
-    ))
+    val tester = TreadleTester(Seq(FirrtlSourceAnnotation(gcdFirrtl)))
 
     val startTime = System.nanoTime()
     tester.poke("clock", 1)
@@ -193,10 +180,7 @@ class GCDTester extends FlatSpec with Matchers {
       f"processed $cycle cycles $elapsedSeconds%.6f seconds ${cycle.toDouble / (1000000.0 * elapsedSeconds)}%5.3f MHz"
     )
     tester.report()
-    tester.finish
-    val usedCount = tester.usageReporter.usedCount
-    val totalCount = tester.usageReporter.totalWireCount
-    println(tester.usageReporter.reportUsedFraction)
+
   }
 
   it should "run with InterpretedTester at Int size 16" in {
