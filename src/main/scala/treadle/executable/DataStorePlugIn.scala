@@ -138,10 +138,13 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
                 assert(args.size == 2, s"Or expected args list of size 2, got $args")
                 val inputA = args.head
                 val inputB = args.last
+                if (inputA.bitWidth != inputB.bitWidth) return
+                val All1s = ~(-1 << inputA.bitWidth)
                 (getSymbolVal(inputA), getSymbolVal(inputB)) match {
-                  case (1, 0) => addAntiDependency(symbol, inputB)
-                  case (0, 1) => addAntiDependency(symbol, inputA)
-                  case (0, 0) | (1, 1) | _ =>
+                  case (All1s, All1s) =>
+                  case (All1s, _) => addAntiDependency(symbol, inputB)
+                  case (_, All1s) => addAntiDependency(symbol, inputA)
+                  case _ =>
                 }
               case _ =>
             }
