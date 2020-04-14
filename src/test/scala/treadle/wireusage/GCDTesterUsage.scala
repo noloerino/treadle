@@ -16,6 +16,7 @@ limitations under the License.
 
 package treadle.wireusage
 
+import firrtl.AnnotationSeq
 import firrtl.options.TargetDirAnnotation
 import firrtl.stage.{FirrtlSourceAnnotation, OutputFileAnnotation}
 import org.scalatest.{FlatSpec, Matchers}
@@ -41,7 +42,7 @@ class GCDTesterUsage extends FlatSpec with Matchers {
 
   behavior.of("GCD")
 
-  def getTester(width: Int): TreadleTester = {
+  def getTester(width: Int, annotations: AnnotationSeq): TreadleTester = {
     val gcdFirrtl =
       s"""
          |circuit GCD :
@@ -71,26 +72,16 @@ class GCDTesterUsage extends FlatSpec with Matchers {
          |    io_z <= x
          |    io_v <= T_21
     """.stripMargin
-    TreadleTester(
-      Seq(
-        FirrtlSourceAnnotation(gcdFirrtl),
-        ReportUsageAnnotation,
-        WriteVcdAnnotation,
-        TargetDirAnnotation("usage_vcds"),
-        OutputFileAnnotation("gcd_many.vcd")
-      )
-    )
+    TreadleTester(Seq(FirrtlSourceAnnotation(gcdFirrtl)) ++ annotations)
   }
 
   //scalastyle:off
-  def sizableTest(width: Int) {
+  def sizableTest(tester: TreadleTester) {
     val values =
       for {
         x <- 10 to 100
         y <- 10 to 100
       } yield (x, y, computeGcd(x, y)._1)
-
-    val tester = getTester(width)
 
     val startTime = System.nanoTime()
     tester.poke("clock", 1)
@@ -126,16 +117,12 @@ class GCDTesterUsage extends FlatSpec with Matchers {
   }
 
   //scalastyle:off
-  def manyValuesTest(width: Int) {
-
-
+  def manyValuesTest(tester: TreadleTester) {
     val values =
       for {
         x <- 1 to 100
         y <- 1 to 100
       } yield (x, y, computeGcd(x, y)._1)
-
-    val tester = getTester(width)
 
     val startTime = System.nanoTime()
     tester.poke("clock", 1)
@@ -169,19 +156,39 @@ class GCDTesterUsage extends FlatSpec with Matchers {
     println(tester.usageReporter.reportUsedFraction)
   }
 
+  def testWithPermutedAnnotations(testFn: TreadleTester => Unit, width: Int): Unit = {
+    val NoAnnotations: AnnotationSeq = Seq()
+    val ReportUsageOnly: AnnotationSeq = Seq(ReportUsageAnnotation)
+    val VcdOnly: AnnotationSeq = Seq(
+      WriteVcdAnnotation,
+      TargetDirAnnotation("usage_vcds"),
+      OutputFileAnnotation("gcd_many.vcd")
+    )
+    val AllAnnotations: AnnotationSeq = ReportUsageOnly ++ VcdOnly
+    Seq(NoAnnotations, ReportUsageOnly, VcdOnly, AllAnnotations).foreach {
+      a: AnnotationSeq =>
+        println(s"=== Testing with annotations: ${Console.GREEN}${
+          a.map {
+            _.serialize
+          }.mkString(", ")
+        }${Console.RESET}")
+      testFn(getTester(width, a))
+    }
+  }
+
   it should "run with InterpretedTester at Int size 16" in {
-    sizableTest(16)
+    testWithPermutedAnnotations(sizableTest, 16)
   }
 
   it should "run with InterpretedTester at Int size 44" in {
-    sizableTest(44)
+    testWithPermutedAnnotations(sizableTest, 44)
   }
 
   it should "run with InterpretedTester at size 68" in {
-    sizableTest(68)
+    testWithPermutedAnnotations(sizableTest, 68)
   }
 
   it should "run a lot of values" in {
-    manyValuesTest(24)
+    testWithPermutedAnnotations(manyValuesTest,24)
   }
 }
