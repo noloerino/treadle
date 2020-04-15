@@ -486,14 +486,22 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
     // Since all pushes will be on the same cycle, we examine bundles of wires together
     val stack: mutable.ArrayStack[(Seq[Symbol.ID], Int)] = mutable.ArrayStack()
     val marked: Array[mutable.BitSet] = newCycleMap()
-    rootSet.zipWithIndex.foreach { case (_, symId) => stack.push((Seq(symId), cycle)) }
+    stack.push((Seq(symbolTable(symbolName).uniqueId), cycle))
+    def isMarked(symbolId: Symbol.ID, cycle: Int) = marked(symbolId).contains(cycle)
     // Pushes the sources of the given symbol on the given cycle onto the stack
     def pushSrcs(symbolId: Symbol.ID, cycle: Int) {
+      def pushWires(srcs: Seq[Symbol.ID], cycle: Int): Unit = {
+        val filtered = srcs.filterNot(isMarked(_, cycle))
+        if (filtered.nonEmpty) {
+          stack.push((filtered, cycle))
+        }
+      }
       val symbol = symbolTable.idToSymbol(symbolId)
       // 1. Register case
       if (symbolTable.contains(s"${symbol.name}/in")) {
+        val regInSym = symbolTable(s"${symbol.name}/in")
         if (cycle > 0) {
-          stack.push((Seq(symbolTable(s"${symbol.name}/in").uniqueId), cycle - 1))
+          pushWires(Seq(regInSym.uniqueId), cycle - 1)
         }
         return
       }
@@ -504,7 +512,8 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
       }
       // 2.1 Usage reporter is disabled (just use static dependencies)
       if (!reportUsage) {
-        stack.push((allPossibleSrcs.toSeq, cycle))
+        pushWires(allPossibleSrcs.toSeq, cycle)
+        return
       }
       // 2.2 Usage reporter is enabled
       // Figure out which wires have antidependencies on the specified cycle
@@ -513,17 +522,15 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
         .filter { case (antiDepCycles: mutable.BitSet, _: Symbol.ID) => antiDepCycles.contains(cycle) }
         .map { _._2 }
         .toSet
-      stack.push((allPossibleSrcs.diff(antiSrcs).toSeq, cycle))
+      pushWires(allPossibleSrcs.diff(antiSrcs).toSeq, cycle)
     }
 
     while (stack.nonEmpty) {
       val (ids, cycle) = stack.pop()
       // Mark and add parents to stack
       ids.foreach { symbolId =>
-        if (!marked(symbolId).contains(cycle)) {
-          marked(symbolId).add(cycle)
-          pushSrcs(symbolId, cycle)
-        }
+        marked(symbolId).add(cycle)
+        pushSrcs(symbolId, cycle)
       }
     }
     val endTime = System.nanoTime()

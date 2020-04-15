@@ -16,11 +16,8 @@ limitations under the License.
 
 package treadle.wireusage
 
-import firrtl.options.TargetDirAnnotation
-import firrtl.stage.{FirrtlSourceAnnotation, OutputFileAnnotation}
 import logger.LazyLogging
 import org.scalatest.{FreeSpec, Matchers}
-import treadle.{ReportUsageAnnotation, TreadleTester, WriteVcdAnnotation}
 
 class AndFeedback extends FreeSpec with Matchers with LazyLogging {
 
