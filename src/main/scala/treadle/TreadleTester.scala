@@ -488,6 +488,11 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
     val marked: Array[mutable.BitSet] = newCycleMap()
     stack.push((Seq(symbolTable(symbolName).uniqueId), cycle))
     def isMarked(symbolId: Symbol.ID, cycle: Int) = marked(symbolId).contains(cycle)
+
+    // Saves work of having to zip with index repeatedly
+    val sinkMapsWithCycles: Array[Array[(mutable.BitSet, Int)]] = usageReporter.sinkMap.map {
+      srcMap: Array[mutable.BitSet] => srcMap.zipWithIndex
+    }
     // Pushes the sources of the given symbol on the given cycle onto the stack
     def pushSrcs(symbolId: Symbol.ID, cycle: Int) {
       def pushWires(srcs: Seq[Symbol.ID], cycle: Int): Unit = {
@@ -517,8 +522,7 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
       }
       // 2.2 Usage reporter is enabled
       // Figure out which wires have antidependencies on the specified cycle
-      val antiSrcs: Set[Symbol.ID] = usageReporter.sinkMap(symbol.uniqueId)
-        .zipWithIndex
+      val antiSrcs: Set[Symbol.ID] = sinkMapsWithCycles(symbol.uniqueId)
         .filter { case (antiDepCycles: mutable.BitSet, _: Symbol.ID) => antiDepCycles.contains(cycle) }
         .map { _._2 }
         .toSet
