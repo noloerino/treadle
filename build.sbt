@@ -63,7 +63,7 @@ resolvers ++= Seq(
 
 assemblyJarName in assembly := "treadle.jar"
 
-mainClass in assembly := Some("treadle.TreadleRepl")
+mainClass in assembly := Some("treadle.UsageTestHarness")
 
 test in assembly := {} // Should there be tests?
 
@@ -150,3 +150,4 @@ scalacOptions in Compile in doc ++= Seq(
 ) ++ scalacOptionsVersion(scalaVersion.value)
 
 javacOptions ++= javacOptionsVersion(scalaVersion.value)
+
