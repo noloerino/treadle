@@ -84,7 +84,7 @@ class RVMiniALU extends FreeSpec with Matchers {
       }
     }
     tester.report()
-    tester.findDependentsOf("io_out", ALUCode.CpA.id)
+    tester.findDependenciesOf("io_out", ALUCode.CpA.id)
     tester.finish
   }
 }

@@ -68,7 +68,7 @@ class AndFeedback extends FreeSpec with Matchers with LazyLogging {
           inputMap foreach {case (wire, value) => tester.poke(wire, value)}
           tester.step()
         }
-        tester.findDependentsOf("q", 5, verbose = true)
+        tester.findDependenciesOf("q", 5, verbose = true)
         println(tester.usageReporter.reportUsedFraction)
     })
     // Expected result:

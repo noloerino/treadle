@@ -59,7 +59,7 @@ object WireUsageTest {
     val wireNamesStr = if (wireNames.size < 10) wireNames.mkString(", ") else s"<${wireNames.size} wires>"
     println(s"=== Found wires: $wireNamesStr ===") // scalastyle:ignore
     testFn(tester)
-    val results = wireNames.map { wireName => tester.findDependentsOf(wireName, cycles) }
+    val results = wireNames.map { wireName => tester.findDependenciesOf(wireName, cycles).foundWires }
     val max = results.max
     val min = results.min
     val avg = results.sum / results.length

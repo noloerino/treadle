@@ -16,9 +16,14 @@ limitations under the License.
 
 package treadle
 
-import firrtl.AnnotationSeq
+import java.io.File
+import java.nio.file.{Files, Paths}
+
+import firrtl.{AnnotationSeq, FileUtils}
 import firrtl.options.TargetDirAnnotation
 import firrtl.stage.{FirrtlSourceAnnotation, OutputFileAnnotation}
+
+import scala.util.Random
 
 object WireUsageTest {
   val NoAnnotations: AnnotationSeq = Seq()
@@ -42,6 +47,33 @@ object WireUsageTest {
   }
 
   /**
+    * Compares the results of mark and sweep with the usage analyzer vs mark and sweep without.
+    *
+    * @param firrtlSrc the string containing the firrtl source code
+    * @param cycles the number of cycles for which to simulate
+    * @param testFn the test function
+    */
+  def compareWithStatic(firrtlSrc: String, cycles: Int, testFn: TreadleTester => Unit): Unit = {
+    println("=== Commencing test comparing with static ===") // scalastyle:ignore
+    val noUsageTester = TreadleTester(Seq(FirrtlSourceAnnotation(firrtlSrc)))
+    val usageTester = TreadleTester(Seq(FirrtlSourceAnnotation(firrtlSrc)) ++ ReportUsageOnly)
+    val wireNames = getInterestingWireNames(noUsageTester) // same for both
+    val wireNamesStr = if (wireNames.size < 10) wireNames.mkString(", ") else s"<${wireNames.size} wires>"
+    println(s"=== Found wires: $wireNamesStr ===") // scalastyle:ignore
+    testFn(noUsageTester)
+    testFn(usageTester)
+    // 3-tuples of total (usage), found (usage/nousage), lastTen (usage/nousage)
+    val resultsTuple = wireNames.map { wireName =>
+      val n = noUsageTester.findDependenciesOf(wireName, cycles)
+      val u = usageTester.findDependenciesOf(wireName, cycles)
+      (u.totalWires, u.foundWires.toDouble / n.foundWires.toDouble, u.lastTenCycles.toDouble / n.lastTenCycles.toDouble)
+    }
+    val tots = resultsTuple.foldRight((0.0, 0.0))((v, acc) => (v._2 + acc._1, v._3 + acc._2))
+    val avgs = (tots._1 / wireNames.length, tots._2 / wireNames.length)
+    println(s"=== ${Console.GREEN}total: ${resultsTuple(0)._1}, avg found % diff: ${avgs._1}, avg ten cycle found % diff: ${avgs._2}")
+  }
+
+  /**
     * Runs the test and performs mark and sweep with different root sets.
     * The tester is only run once.
     * The different root sets are each singleton sets of "interesting" wires: see [getInterestingWireNames].
@@ -58,10 +90,8 @@ object WireUsageTest {
     val wireNamesStr = if (wireNames.size < 10) wireNames.mkString(", ") else s"<${wireNames.size} wires>"
     println(s"=== Found wires: $wireNamesStr ===") // scalastyle:ignore
     testFn(tester)
-    val results = wireNames.map { wireName => tester.findDependentsOf(wireName, cycles) }
-    val max = results.max
-    val min = results.min
-    val avg = results.sum / results.length
+    val results = wireNames.map { wireName => tester.findDependenciesOf(wireName, cycles) }
+    val (min, avg, max) = MarkAndSweepResult.min_avg_max(results)
     println(s"=== ${Console.GREEN}max: $max, min: $min, avg: $avg ===${Console.RESET}") // scalastyle:ignore
   }
 
@@ -78,7 +108,8 @@ object WireUsageTest {
       .keysIterator
       .filterNot(
         name =>
-          name.contains("GEN") ||
+          symbolTable.instanceNames.contains(name) ||
+            name.contains("GEN") ||
             name.contains("_T_") ||
             name.contains("T_") ||
             name.endsWith("/in") ||
@@ -166,21 +197,120 @@ object UsageTestHarness extends App {
     }
     val endTime = System.nanoTime()
     val elapsedSeconds = (endTime - startTime).toDouble / 1000000000.0
-
-    val cycle = 11 // tester.engine.circuitState.stateCounter
-
-    println(
-      f"processed $cycle cycles $elapsedSeconds%.6f seconds ${cycle.toDouble / (1000000.0 * elapsedSeconds)}%5.3f MHz"
-    )
     tester.report()
-
   }
 
+  def runDataPath(tester: TreadleTester) {
+    val iterCount = 20 // inst is of size 50
+    val rng = Random
+    // Ripped from reading the inputs of RiscVMini's TestUtils.insts
+    // For some stupid reason, vals in object aren't initialized?
+    val insts =
+      """
+        |478570167
+        |38563735
+        |2915248239
+        |3564768999
+        |1907427299
+        |3110179171
+        |3085616867
+        |1020878307
+        |947184995
+        |2672195555
+        |365104259
+        |3435043587
+        |1688743427
+        |2329559427
+        |3008912259
+        |4291988003
+        |3237846947
+        |3597413667
+        |3819537939
+        |1459496467
+        |2312550675
+        |1908297363
+        |1796040851
+        |2151578131
+        |27401619
+        |28431123
+        |1076846355
+        |22677043
+        |1089013939
+        |10066483
+        |13443507
+        |13023539
+        |31900211
+        |26171059
+        |1080186675
+        |23978803
+        |28865203
+        |267386895
+        |4111
+        |810161523
+        |874391155
+        |3223239539
+        |808017907
+        |809625331
+        |2551478515
+        |115
+        |1048691
+        |268435571
+        |19
+        |908752575
+        |""".stripMargin.trim.split("\n").map { _.toLong }
 
+    tester.poke("reset", 1)
+    for (_ <- 0 until iterCount) {
+      for (inst <- insts) {
+        tester.poke("io_icache_resp_bits_data", inst)
+        tester.poke("io_icache_resp_valid", 1)
+        tester.poke("io_dcache_resp_bits_data", rng.nextInt())
+        tester.poke("io_dcache_resp_valid", 1)
+        tester.step()
+      }
+    }
+    tester.report()
+  }
+
+  val WIRES = 0
+  val ANNOS = 1
+  val COMP = 2
+
+  // scalastyle:off cyclomatic.complexity
   override def main(args: Array[String]): Unit = {
-    val tester = WireUsageTest.testWithPermutedAnnotations(
-      gcdFirrtl(16),
-      sizableTest
-    )
+    if (args.length != 2) {
+      println("Usage: UsageTestHarness gcd|dpath wires|annos|comp")
+      System.exit(1)
+    }
+    val argChoice = args(1) match {
+      case "wires" => 0
+      case "annos" => 1
+      case "comp" => 2
+      case _ => throw new Exception("Bad test option")
+    }
+//    println("CHOICE " + argChoice.toString + args(1))
+    args(0) match {
+      case "gcd" => runGcd(argChoice)
+      case "dpath" => runDpath(argChoice)
+      case _ => throw new Exception("Bad circuit option")
+    }
+  }
+
+  def runner(choice: Int, firrtl: String, testFn: TreadleTester => Unit): Unit = {
+    val cycles = 1000
+    choice match {
+      case 0 => WireUsageTest.testWithInterestingWires(firrtl, cycles, testFn)
+      case 1 => WireUsageTest.testWithPermutedAnnotations(firrtl, testFn)
+      case 2 => WireUsageTest.compareWithStatic(firrtl, cycles, testFn)
+    }
+  }
+
+  def runGcd(choice: Int): Unit = {
+    runner(choice, gcdFirrtl(16), sizableTest)
+  }
+
+  def runDpath(choice: Int): Unit = {
+    val dpathFirrtl = FileUtils.getText(Paths.get("Datapath.fir").toFile)
+    runner(choice, dpathFirrtl, runDataPath)
   }
 }

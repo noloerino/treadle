@@ -30,6 +30,46 @@ import treadle.vcd.VCD
 
 import scala.collection.mutable
 
+case class MarkAndSweepResult(
+  timeMs: Long, // time to mark and sweep in ms
+  totalWires: Int, // # of wires examined in sim
+  foundWires: Int, // # of source wires
+  lastTenCycles: Int, // # of source wires in last 10 cycles
+) {
+  override def toString(): String = {
+    s"Result(time=${timeMs}ms, totalWires=$totalWires, foundWires=$foundWires, inLastTenCycles=$lastTenCycles)"
+  }
+}
+object MarkAndSweepResult {
+  /** Returns a tuple of results that respectively hold the minimum, average, and max of all the provided results */
+  def min_avg_max(results: Seq[MarkAndSweepResult]): (MarkAndSweepResult, MarkAndSweepResult, MarkAndSweepResult) = {
+    // For avg, upcast in case we get a ton of results
+    var totalTime: BigInt = 0
+    var totalTotalWires: Long = 0
+    var totalFoundWires: Long = 0
+    var totalLastTenCycles: Long = 0
+    results foreach { case MarkAndSweepResult(timeMs, totalWires, foundWires, lastTenCycles) =>
+      totalTime += timeMs
+      totalTotalWires += totalWires
+      totalFoundWires += foundWires
+      totalLastTenCycles += lastTenCycles
+    }
+    val times = results.map { _.timeMs }
+    val totalWires = results.map { _.totalWires }
+    val foundWires = results.map { _.foundWires }
+    val lastTenCycles = results.map { _.lastTenCycles }
+    val n = results.length
+    (
+      MarkAndSweepResult(times.min, totalWires.min, foundWires.min, lastTenCycles.min),
+      MarkAndSweepResult((totalTime / n).toLong,
+        (totalTotalWires / n).toInt,
+        (totalFoundWires / n).toInt,
+        (totalLastTenCycles / n).toInt),
+      MarkAndSweepResult(times.max, totalWires.max, foundWires.max, lastTenCycles.max),
+    )
+  }
+}
+
 //TODO: Indirect assignments to external modules input is possibly not handled correctly
 //TODO: Force values should work with multi-slot symbols
 
@@ -471,20 +511,18 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
     *
     * @param symbolName the name of the symbol to examine
     * @param cycle the cycle on which to examine the symbol
-    * @return the number of dependencies found, including the initial root set
+    * @return some result data about the found set
     */
   // scalastyle:off method.length
-  def findDependentsOf(symbolName: String, cycle: Int, verbose: Boolean = false): Int = {
+  def findDependenciesOf(symbolName: String, cycle: Int, verbose: Boolean = false): MarkAndSweepResult = {
     val symbolTable = engine.symbolTable
     val startTime = System.nanoTime()
     val symIdRange = 0 to symbolTable.symbols.map { _.uniqueId }.max
     // Perform mark and sweep
     def newCycleMap() = symIdRange.map { _ => mutable.BitSet() }.toArray
-    // As with the runtime maps, the index is a symbol ID and the value is a set of cycles
-    val rootSet: Array[mutable.BitSet] = newCycleMap()
-    rootSet(symbolTable(symbolName).uniqueId).add(cycle)
     // Since all pushes will be on the same cycle, we examine bundles of wires together
     val stack: mutable.ArrayStack[(Seq[Symbol.ID], Int)] = mutable.ArrayStack()
+    // As with the runtime maps, the index is a symbol ID and the value is a set of cycles
     val marked: Array[mutable.BitSet] = newCycleMap()
     stack.push((Seq(symbolTable(symbolName).uniqueId), cycle))
     def isMarked(symbolId: Symbol.ID, cycle: Int) = marked(symbolId).contains(cycle)
@@ -557,7 +595,13 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
       println(s"*** Mark and sweep for $symbolName @ $cycle took ${(endTime - startTime).toDouble / 1e9} s" +
         s" (found ${sortedPairs.length} wires)")
     }
-    sortedPairs.length
+    val inLastTen = sortedPairs.count { case (_, onCycle) => onCycle > cycle - 10 }
+    MarkAndSweepResult(
+      (endTime - startTime) / 1e6.toLong,
+      usageReporter.totalWireCount,
+      sortedPairs.length,
+      inLastTen
+    )
   }
 
   def finish: Boolean = {
