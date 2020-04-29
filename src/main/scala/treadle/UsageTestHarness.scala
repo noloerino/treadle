@@ -119,6 +119,12 @@ object WireUsageTest {
     val inputNames = symbolTable.inputPortsNames
     wireNames.toSet.diff(inputNames).toSeq
   }
+
+  def testTime(firrtlSrc: String, cycles: Int, testFn: TreadleTester => Unit): Unit = {
+    println("=== Commencing timing test with only ReportUsage; no mark/sweep ===")
+    val tester = TreadleTester(Seq(FirrtlSourceAnnotation(firrtlSrc)) ++ ReportUsageOnly)
+    testFn(tester)
+  }
 }
 
 object UsageTestHarness extends App {
@@ -272,23 +278,19 @@ object UsageTestHarness extends App {
     tester.report()
   }
 
-  val WIRES = 0
-  val ANNOS = 1
-  val COMP = 2
-
   // scalastyle:off cyclomatic.complexity
   override def main(args: Array[String]): Unit = {
     if (args.length != 2) {
-      println("Usage: UsageTestHarness gcd|dpath wires|annos|comp")
+      println("Usage: UsageTestHarness gcd|dpath wires|annos|comp|time")
       System.exit(1)
     }
     val argChoice = args(1) match {
-      case "wires" => 0
-      case "annos" => 1
-      case "comp" => 2
+      case "wires" => 0 // Tests varying root sets
+      case "annos" => 1 // Tests varying annotations
+      case "comp" => 2 // Compares elimination vs no runtime dependency pruning
+      case "time" => 3 // Just time the sim with only usage annotation
       case _ => throw new Exception("Bad test option")
     }
-//    println("CHOICE " + argChoice.toString + args(1))
     args(0) match {
       case "gcd" => runGcd(argChoice)
       case "dpath" => runDpath(argChoice)
@@ -302,6 +304,7 @@ object UsageTestHarness extends App {
       case 0 => WireUsageTest.testWithInterestingWires(firrtl, cycles, testFn)
       case 1 => WireUsageTest.testWithPermutedAnnotations(firrtl, testFn)
       case 2 => WireUsageTest.compareWithStatic(firrtl, cycles, testFn)
+      case 3 => WireUsageTest.testTime(firrtl, cycles, testFn)
     }
   }
 
