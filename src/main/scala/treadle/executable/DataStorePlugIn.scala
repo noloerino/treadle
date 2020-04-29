@@ -61,23 +61,17 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
   private type Cycle = Int
   private var currentCycle: Cycle = 0
 
-  // Maps source wires to bitset of cycles for which it is NOT a source (since we use antidependencies)
-  // Note that since registers aren't handled here, all dependencies occur within the same cycle
-  // Effectively Map[Symbol.ID, mutable.BitSet]
-  private type SrcMap = Array[mutable.BitSet]
-  // Map sink wires to all possible sources
-  // Effectively Map[Symbol.ID, SrcMap]
-  // Assume that generated symbol IDs begin from 0
-  val symIdRange = 0 to symbolTable.symbols.map { _.uniqueId }.max
-  val sinkMap: Array[SrcMap] = symIdRange.map { _ => symIdRange.map { _ => mutable.BitSet() }.toArray }.toArray
+  // Maps sink + cycle to src wire - we know dep is always in same cycle
+  private type SinkMap = mutable.Map[(Symbol.ID, Cycle), mutable.Set[Symbol.ID]]
+  val sinkMap: SinkMap = mutable.Map()
 
   // Usually, it is reasonable to assume that more wires are used than not; this checks that
-  var unusedCount = 0
+  var usedCount = 0
   var totalWireCount = 0
   var ignoredSymbolCount = 0
   var totalVisitedCount = 0
 
-  def usedCount: Int = totalWireCount - unusedCount
+  def unusedCount: Int = totalWireCount - usedCount
   def usedFraction: Double =
     if (totalWireCount > 0) usedCount.toDouble / totalWireCount.toDouble else 0.0
   def ignoredFraction: Double =
@@ -95,10 +89,10 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
     currentCycle += 1
   }
 
-  private def addAntiDependency(sink: Symbol, src: Symbol): Unit = {
-    unusedCount += 1
-    val cycleSet = sinkMap(sink.uniqueId)(src.uniqueId)
-    cycleSet.add(currentCycle)
+  private def addDependency(sink: Symbol, src: Symbol): Unit = {
+    usedCount += 1
+    val cycleSet = sinkMap.getOrElseUpdate((sink.uniqueId, currentCycle), mutable.Set())
+    cycleSet.add(src.uniqueId)
   }
 
   // scalastyle:off cyclomatic.complexity method.length
@@ -115,8 +109,9 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
         totalWireCount += opInfo.totalSources
         opInfo match {
           case MuxOperation(condition, trueSym, falseSym) =>
+            addDependency(symbol, condition)
             val conditionVal = getSymbolVal(condition)
-            addAntiDependency(symbol, if (conditionVal == 1) falseSym else trueSym)
+            addDependency(symbol, if (conditionVal == 1) trueSym else falseSym)
             val usedArg = if (conditionVal == 1) trueSym else falseSym
             assert(getSymbolVal(usedArg) == symbolVal, "Selected mux argument and output must have same value")
           case PrimOperation(opcode, args) =>
@@ -129,9 +124,13 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
                 val inputB = args.last
                 (getSymbolVal(inputA), getSymbolVal(inputB)) match {
                   case (0, 0) =>
-                  case (0, _) => addAntiDependency(symbol, inputB)
-                  case (_, 0) => addAntiDependency(symbol, inputA)
+                    addDependency(symbol, inputA)
+                    addDependency(symbol, inputB)
+                  case (0, _) => addDependency(symbol, inputA)
+                  case (_, 0) => addDependency(symbol, inputB)
                   case _ =>
+                    addDependency(symbol, inputA)
+                    addDependency(symbol, inputB)
                 }
               case Or =>
                 // OR only matters in the 1b case
@@ -143,13 +142,23 @@ class ReportUsage(val executionEngine: ExecutionEngine) extends DataStorePlugin 
                 val All1s = ~(-1 << inputA.bitWidth)
                 (getSymbolVal(inputA), getSymbolVal(inputB)) match {
                   case (All1s, All1s) =>
-                  case (All1s, _) => addAntiDependency(symbol, inputB)
-                  case (_, All1s) => addAntiDependency(symbol, inputA)
+                    addDependency(symbol, inputA)
+                    addDependency(symbol, inputB)
+                  case (All1s, _) => addDependency(symbol, inputA)
+                  case (_, All1s) => addDependency(symbol, inputB)
                   case _ =>
+                    addDependency(symbol, inputA)
+                    addDependency(symbol, inputB)
                 }
               case _ =>
+                for (arg <- args) {
+                  addDependency(symbol, arg)
+                }
             }
           case _ =>
+            for (arg <- opInfo.allSrcs) {
+              addDependency(symbol, arg)
+            }
         }
       }
     )
