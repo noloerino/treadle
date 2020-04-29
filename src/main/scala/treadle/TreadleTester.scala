@@ -546,19 +546,21 @@ class TreadleTester(annotationSeq: AnnotationSeq) {
       }
       // 2. General case
       // 2.1 Usage reporter is disabled (just use static dependencies)
+      val allPossibleSrcs = symbolTable.operationGraph.get(symbol.uniqueId) match {
+        case Some(sym) => sym.allSrcs.map { _.uniqueId }
+        case _ => return
+      }
       if (!reportUsage) {
-        val allPossibleSrcs = symbolTable.operationGraph.get(symbol.uniqueId) match {
-          case Some(sym) => sym.allSrcs.map { _.uniqueId }
-          case _ => return
-        }
         pushWires(allPossibleSrcs.toSeq, cycle)
         return
       }
       // 2.2 Usage reporter is enabled
       // Figure out which wires have dependencies on the specified cycle
-      val srcs: Option[mutable.Set[Symbol.ID]] = usageReporter.sinkMap.get((symbolId, cycle))
-      if (srcs.isDefined) {
-        pushWires(srcs.head.toSeq, cycle)
+      val antiSrcs: Option[mutable.Set[Symbol.ID]] = usageReporter.sinkMap.get((symbolId, cycle))
+      if (antiSrcs.isDefined) {
+        pushWires((allPossibleSrcs.diff(antiSrcs.head)).toSeq, cycle)
+      } else {
+        pushWires(allPossibleSrcs.toSeq, cycle)
       }
     }
 
