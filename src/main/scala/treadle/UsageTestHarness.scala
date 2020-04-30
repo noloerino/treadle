@@ -34,15 +34,19 @@ object WireUsageTest {
     OutputFileAnnotation("usage_out.vcd")
   )
   val AllAnnotations: AnnotationSeq = ReportUsageOnly ++ VcdOnly
+  val annoPerms = Seq(NoAnnotations, ReportUsageOnly, VcdOnly, AllAnnotations)
+
+  def testWithAnnos(firrtlSrc: String, testFn: TreadleTester => Unit, annotations: AnnotationSeq): Unit = {
+    val s = s"=== Testing with annotations: ${Console.GREEN +
+      annotations.map { _.serialize }.mkString(", ") + Console.RESET} ==="
+    println(s) // scalastyle:ignore
+    val tester = TreadleTester(Seq(FirrtlSourceAnnotation(firrtlSrc)) ++ annotations)
+    testFn(tester)
+  }
 
   def testWithPermutedAnnotations(firrtlSrc: String, testFn: TreadleTester => Unit) {
-    Seq(NoAnnotations, ReportUsageOnly, VcdOnly, AllAnnotations).foreach {
-      annotations: AnnotationSeq =>
-        val s = s"=== Testing with annotations: ${Console.GREEN +
-          annotations.map { _.serialize }.mkString(", ") + Console.RESET} ==="
-        println(s) // scalastyle:ignore
-        val tester = TreadleTester(Seq(FirrtlSourceAnnotation(firrtlSrc)) ++ annotations)
-        testFn(tester)
+    annoPerms.foreach {
+      annotations: AnnotationSeq => testWithAnnos(firrtlSrc, testFn, annotations)
     }
   }
 
@@ -63,14 +67,18 @@ object WireUsageTest {
     testFn(noUsageTester)
     testFn(usageTester)
     // 3-tuples of total (usage), found (usage/nousage), lastTen (usage/nousage)
-    val resultsTuple = wireNames.map { wireName =>
+    val resultsList = wireNames.map { wireName =>
       val n = noUsageTester.findDependenciesOf(wireName, cycles)
       val u = usageTester.findDependenciesOf(wireName, cycles)
-      (u.totalWires, u.foundWires.toDouble / n.foundWires.toDouble, u.lastTenCycles.toDouble / n.lastTenCycles.toDouble)
+      (u, n)
     }
-    val tots = resultsTuple.foldRight((0.0, 0.0))((v, acc) => (v._2 + acc._1, v._3 + acc._2))
-    val avgs = (tots._1 / wireNames.length, tots._2 / wireNames.length)
-    println(s"=== ${Console.GREEN}total: ${resultsTuple(0)._1}, avg found % diff: ${avgs._1}, avg ten cycle found % diff: ${avgs._2}")
+    val (usageFoundTotal, noUsageFoundTotal) = resultsList.foldRight((0, 0))((v, acc) =>
+      (v._1.foundWires + acc._1, v._2.foundWires + acc._2))
+    val foundPct = usageFoundTotal.toDouble / noUsageFoundTotal.toDouble
+    val (usageFoundTotalLastTen, noUsageFoundTotalLastTen) = resultsList.foldRight((0, 0))((v, acc) =>
+      (v._1.lastTenCycles + acc._1, v._2.lastTenCycles + acc._2))
+    val foundLastTenPct = usageFoundTotalLastTen.toDouble / noUsageFoundTotalLastTen.toDouble
+    println(s"=== ${Console.GREEN}total: ${resultsList(0)._1.totalWires}, total found % diff: $foundPct, total ten cycle found % diff: $foundLastTenPct")
   }
 
   /**
@@ -92,7 +100,11 @@ object WireUsageTest {
     testFn(tester)
     val results = wireNames.map { wireName => tester.findDependenciesOf(wireName, cycles) }
     val (min, avg, max) = MarkAndSweepResult.min_avg_max(results)
-    println(s"=== ${Console.GREEN}max: $max, min: $min, avg: $avg ===${Console.RESET}") // scalastyle:ignore
+    println(s"${Console.BLUE}=== RAW TIMES FOR HISTOGRAM ===")
+    for (result <- results) {
+      println(result.timeMs)
+    }
+    println(s"${Console.GREEN}=== max: $max, min: $min, avg: $avg ===${Console.RESET}") // scalastyle:ignore
   }
 
   /**
@@ -104,11 +116,13 @@ object WireUsageTest {
     */
   def getInterestingWireNames(tester: TreadleTester): Seq[String] = {
     val symbolTable = tester.engine.symbolTable
+    val moduleNameSet = symbolTable.instanceNameToModuleName.values.toSet
     val wireNames = symbolTable.nameToSymbol
       .keysIterator
       .filterNot(
         name =>
           symbolTable.instanceNames.contains(name) ||
+            moduleNameSet.contains(name) ||
             name.contains("GEN") ||
             name.contains("_T_") ||
             name.contains("T_") ||
@@ -278,15 +292,15 @@ object UsageTestHarness extends App {
     tester.report()
   }
 
+  var annoIndex = 0
+
   // scalastyle:off cyclomatic.complexity
   override def main(args: Array[String]): Unit = {
-    if (args.length != 2) {
-      println("Usage: UsageTestHarness gcd|dpath wires|annos|comp|time")
-      System.exit(1)
-    }
     val argChoice = args(1) match {
       case "wires" => 0 // Tests varying root sets
-      case "annos" => 1 // Tests varying annotations
+      case "annos" =>
+        annoIndex = args(2).toInt
+        1 // Tests varying annotations
       case "comp" => 2 // Compares elimination vs no runtime dependency pruning
       case "time" => 3 // Just time the sim with only usage annotation
       case _ => throw new Exception("Bad test option")
@@ -302,7 +316,7 @@ object UsageTestHarness extends App {
     val cycles = 1000
     choice match {
       case 0 => WireUsageTest.testWithInterestingWires(firrtl, cycles, testFn)
-      case 1 => WireUsageTest.testWithPermutedAnnotations(firrtl, testFn)
+      case 1 => WireUsageTest.testWithAnnos(firrtl, testFn, WireUsageTest.annoPerms(annoIndex))
       case 2 => WireUsageTest.compareWithStatic(firrtl, cycles, testFn)
       case 3 => WireUsageTest.testTime(firrtl, cycles, testFn)
     }
